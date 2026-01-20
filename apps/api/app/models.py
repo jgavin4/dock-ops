@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from sqlalchemy import DateTime
+from sqlalchemy import Enum
 from sqlalchemy import ForeignKey
 from sqlalchemy import Integer
 from sqlalchemy import Index
@@ -13,8 +14,25 @@ from sqlalchemy import func
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
+import enum
 
 from app.db import Base
+
+
+class InventoryCheckStatus(str, enum.Enum):
+    IN_PROGRESS = "in_progress"
+    SUBMITTED = "submitted"
+
+
+class InventoryCheckLineCondition(str, enum.Enum):
+    OK = "ok"
+    NEEDS_REPLACEMENT = "needs_replacement"
+    MISSING = "missing"
+
+
+class MaintenanceCadenceType(str, enum.Enum):
+    INTERVAL = "interval"
+    SPECIFIC_DATE = "specific_date"
 
 
 class Organization(Base):
@@ -102,3 +120,157 @@ class Vessel(Base):
     )
 
     organization: Mapped[Organization] = relationship(back_populates="vessels")
+    inventory_requirements: Mapped[list["VesselInventoryRequirement"]] = relationship(
+        back_populates="vessel", cascade="all, delete-orphan"
+    )
+    inventory_checks: Mapped[list["InventoryCheck"]] = relationship(
+        back_populates="vessel", cascade="all, delete-orphan"
+    )
+    maintenance_tasks: Mapped[list["MaintenanceTask"]] = relationship(
+        back_populates="vessel", cascade="all, delete-orphan"
+    )
+
+
+class VesselInventoryRequirement(Base):
+    __tablename__ = "vessel_inventory_requirements"
+    __table_args__ = (Index("ix_vessel_inventory_requirements_vessel_id", "vessel_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vessel_id: Mapped[int] = mapped_column(ForeignKey("vessels.id"), nullable=False)
+    item_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    required_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    category: Mapped[Optional[str]] = mapped_column(String(255))
+    critical: Mapped[bool] = mapped_column(default=False, server_default="false")
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    vessel: Mapped[Vessel] = relationship(back_populates="inventory_requirements")
+    check_lines: Mapped[list["InventoryCheckLine"]] = relationship(
+        back_populates="requirement", cascade="all, delete-orphan"
+    )
+
+
+class InventoryCheck(Base):
+    __tablename__ = "inventory_checks"
+    __table_args__ = (Index("ix_inventory_checks_vessel_id", "vessel_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vessel_id: Mapped[int] = mapped_column(ForeignKey("vessels.id"), nullable=False)
+    performed_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    performed_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    status: Mapped[InventoryCheckStatus] = mapped_column(
+        Enum(InventoryCheckStatus), nullable=False, default=InventoryCheckStatus.IN_PROGRESS
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    vessel: Mapped[Vessel] = relationship(back_populates="inventory_checks")
+    performed_by: Mapped[User] = relationship()
+    lines: Mapped[list["InventoryCheckLine"]] = relationship(
+        back_populates="check", cascade="all, delete-orphan", order_by="InventoryCheckLine.id"
+    )
+
+
+class InventoryCheckLine(Base):
+    __tablename__ = "inventory_check_lines"
+    __table_args__ = (
+        UniqueConstraint("inventory_check_id", "requirement_id", name="uq_check_lines_check_req"),
+        Index("ix_inventory_check_lines_check_id", "inventory_check_id"),
+        Index("ix_inventory_check_lines_requirement_id", "requirement_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    inventory_check_id: Mapped[int] = mapped_column(
+        ForeignKey("inventory_checks.id"), nullable=False
+    )
+    requirement_id: Mapped[int] = mapped_column(
+        ForeignKey("vessel_inventory_requirements.id"), nullable=False
+    )
+    actual_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    condition: Mapped[InventoryCheckLineCondition] = mapped_column(
+        Enum(InventoryCheckLineCondition), nullable=False, default=InventoryCheckLineCondition.OK
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    check: Mapped[InventoryCheck] = relationship(back_populates="lines")
+    requirement: Mapped[VesselInventoryRequirement] = relationship(back_populates="check_lines")
+
+
+class MaintenanceTask(Base):
+    __tablename__ = "maintenance_tasks"
+    __table_args__ = (Index("ix_maintenance_tasks_vessel_id", "vessel_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vessel_id: Mapped[int] = mapped_column(ForeignKey("vessels.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    cadence_type: Mapped[MaintenanceCadenceType] = mapped_column(
+        Enum(MaintenanceCadenceType), nullable=False
+    )
+    interval_days: Mapped[Optional[int]] = mapped_column(Integer)
+    due_date: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True))
+    next_due_at: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True))
+    critical: Mapped[bool] = mapped_column(default=False, server_default="false")
+    is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    vessel: Mapped[Vessel] = relationship(back_populates="maintenance_tasks")
+    logs: Mapped[list["MaintenanceLog"]] = relationship(
+        back_populates="task", cascade="all, delete-orphan", order_by="MaintenanceLog.performed_at.desc()"
+    )
+
+
+class MaintenanceLog(Base):
+    __tablename__ = "maintenance_logs"
+    __table_args__ = (Index("ix_maintenance_logs_task_id", "maintenance_task_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    maintenance_task_id: Mapped[int] = mapped_column(
+        ForeignKey("maintenance_tasks.id"), nullable=False
+    )
+    performed_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    performed_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    task: Mapped[MaintenanceTask] = relationship(back_populates="logs")
+    performed_by: Mapped[User] = relationship()
