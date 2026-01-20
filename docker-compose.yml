@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: vessel_ops_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vessel
+      POSTGRES_PASSWORD: vessel
+      POSTGRES_DB: vessel_ops
+    ports:
+      - "5432:5432"
+    volumes:
+      - vessel_ops_pgdata:/var/lib/postgresql/data
+
+volumes:
+  vessel_ops_pgdata:
