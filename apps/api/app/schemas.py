@@ -11,6 +11,8 @@ from pydantic import Field
 from app.models import InventoryCheckStatus
 from app.models import InventoryCheckLineCondition
 from app.models import MaintenanceCadenceType
+from app.models import OrgRole
+from app.models import MembershipStatus
 
 
 class VesselBase(BaseModel):
@@ -92,7 +94,7 @@ class InventoryCheckOut(InventoryCheckBase):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="allow")
 
 
 class InventoryCheckWithLinesOut(InventoryCheckOut):
@@ -197,7 +199,7 @@ class MaintenanceLogOut(MaintenanceLogBase):
     performed_at: datetime
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="allow")
 
 
 # Vessel Comment Schemas
@@ -214,5 +216,125 @@ class VesselCommentOut(VesselCommentBase):
     vessel_id: int
     user_id: int
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# Organization Schemas
+class OrganizationBase(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+
+
+class OrganizationCreate(OrganizationBase):
+    pass
+
+
+class OrganizationOut(OrganizationBase):
+    id: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# Org Membership Schemas
+class OrgMembershipOut(BaseModel):
+    id: int
+    org_id: int
+    user_id: int
+    role: OrgRole
+    status: MembershipStatus
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrgMembershipWithUserOut(OrgMembershipOut):
+    user_email: str
+    user_name: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True, extra="allow")
+
+
+# Org Invite Schemas
+class OrgInviteCreate(BaseModel):
+    email: str = Field(min_length=1)
+    role: OrgRole
+
+
+class OrgInviteOut(BaseModel):
+    id: int
+    org_id: int
+    email: str
+    role: OrgRole
+    invited_by_user_id: int
+    expires_at: datetime
+    accepted_at: Optional[datetime] = None
+    revoked_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrgInviteAccept(BaseModel):
+    token: str
+
+
+class MemberRoleUpdate(BaseModel):
+    role: OrgRole
+
+
+# Organization Request Schemas
+class OrganizationRequestCreate(BaseModel):
+    org_name: str = Field(min_length=1, max_length=255)
+
+
+class OrganizationRequestOut(BaseModel):
+    id: int
+    requested_by_user_id: int
+    org_name: str
+    status: str
+    reviewed_by_user_id: Optional[int] = None
+    review_notes: Optional[str] = None
+    created_at: datetime
+    reviewed_at: Optional[datetime] = None
+    updated_at: datetime
+    requested_by_email: Optional[str] = None
+    requested_by_name: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True, extra="allow")
+
+
+class OrganizationRequestReview(BaseModel):
+    status: str = Field(pattern="^(APPROVED|REJECTED)$")
+    review_notes: Optional[str] = None
+
+
+# User/Me Schemas
+class UserOut(BaseModel):
+    id: int
+    email: str
+    name: Optional[str] = None
+    is_super_admin: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrgMembershipSummary(BaseModel):
+    org_id: int
+    org_name: str
+    role: OrgRole
+    status: MembershipStatus
+
+    model_config = ConfigDict(from_attributes=True, extra="allow")
+
+
+class MeOut(BaseModel):
+    user: UserOut
+    memberships: list[OrgMembershipSummary]
 
     model_config = ConfigDict(from_attributes=True)

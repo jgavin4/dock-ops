@@ -9,6 +9,7 @@ from app.deps import AuthContext
 from app.deps import get_current_auth
 from app.deps import get_db
 from app.models import Vessel
+from app.permissions import can_crud_vessels
 from app.schemas import VesselCreate
 from app.schemas import VesselOut
 from app.schemas import VesselUpdate
@@ -35,6 +36,8 @@ def create_vessel(
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(get_current_auth),
 ) -> Vessel:
+    if not can_crud_vessels(auth):
+        raise HTTPException(status_code=403, detail="Insufficient permissions to create vessels")
     vessel = Vessel(
         org_id=auth.org_id,
         name=payload.name,
@@ -75,6 +78,8 @@ def update_vessel(
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(get_current_auth),
 ) -> Vessel:
+    if not can_crud_vessels(auth):
+        raise HTTPException(status_code=403, detail="Insufficient permissions to update vessels")
     vessel = (
         db.execute(
             select(Vessel).where(Vessel.id == vessel_id, Vessel.org_id == auth.org_id)

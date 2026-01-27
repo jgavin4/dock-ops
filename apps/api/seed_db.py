@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
-from app.models import Organization, OrgMembership, User
+from app.models import Organization, OrgMembership, User, OrgRole, MembershipStatus
 
 load_dotenv()
 
@@ -22,29 +22,47 @@ def seed():
     db = SessionLocal()
     try:
         # Check if organization already exists
-        org = db.query(Organization).filter(Organization.id == 1).first()
+        org = db.query(Organization).filter(Organization.name == "Test Organization").first()
         if not org:
-            org = Organization(id=1, name="Test Organization")
+            org = Organization(name="Test Organization")
             db.add(org)
-            print("Created organization: Test Organization")
+            db.flush()  # Get the org ID
+            print(f"Created organization: Test Organization (ID: {org.id})")
+        else:
+            print(f"Organization already exists: Test Organization (ID: {org.id})")
 
-        # Check if user already exists
-        user = db.query(User).filter(User.id == 1).first()
+        # Check if user already exists (by email or auth_subject)
+        user = db.query(User).filter(User.email == "test@example.com").first()
         if not user:
-            user = User(id=1, email="test@example.com", name="Test User")
+            user = User(
+                auth_provider="clerk",
+                auth_subject="test_user_123",  # Mock Clerk user ID
+                email="test@example.com",
+                name="Test User"
+            )
             db.add(user)
-            print("Created user: test@example.com")
+            db.flush()  # Get the user ID
+            print(f"Created user: test@example.com (ID: {user.id})")
+        else:
+            print(f"User already exists: test@example.com (ID: {user.id})")
 
         # Check if membership already exists
         membership = (
             db.query(OrgMembership)
-            .filter(OrgMembership.org_id == 1, OrgMembership.user_id == 1)
+            .filter(OrgMembership.org_id == org.id, OrgMembership.user_id == user.id)
             .first()
         )
         if not membership:
-            membership = OrgMembership(org_id=1, user_id=1, role="admin")
+            membership = OrgMembership(
+                org_id=org.id,
+                user_id=user.id,
+                role=OrgRole.ADMIN,
+                status=MembershipStatus.ACTIVE
+            )
             db.add(membership)
-            print("Created membership: user 1 -> org 1")
+            print(f"Created membership: user {user.id} -> org {org.id} (ADMIN)")
+        else:
+            print(f"Membership already exists: user {user.id} -> org {org.id}")
 
         db.commit()
         print("Database seeded successfully!")

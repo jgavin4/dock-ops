@@ -15,7 +15,9 @@ from app.deps import get_db
 from app.models import MaintenanceCadenceType
 from app.models import MaintenanceLog
 from app.models import MaintenanceTask
+from app.models import User
 from app.models import Vessel
+from app.permissions import can_edit_maintenance_tasks
 from app.schemas import MaintenanceLogCreate
 from app.schemas import MaintenanceLogOut
 from app.schemas import MaintenanceTaskCreate
@@ -115,6 +117,8 @@ def update_task(
     auth: AuthContext = Depends(get_current_auth),
 ) -> MaintenanceTask:
     """Update a maintenance task."""
+    if not can_edit_maintenance_tasks(auth):
+        raise HTTPException(status_code=403, detail="Insufficient permissions to edit maintenance tasks")
     task = (
         db.execute(
             select(MaintenanceTask)
@@ -194,4 +198,60 @@ def create_log(
 
     db.commit()
     db.refresh(log)
+    
+    # Load user info for response
+    user = db.execute(select(User).where(User.id == log.performed_by_user_id)).scalar_one_or_none()
+    if user:
+        # Add user info as attributes (Pydantic will include them with extra="allow")
+        setattr(log, "performed_by_name", user.name)
+        setattr(log, "performed_by_email", user.email)
+    
     return log
+
+
+@router.get("/api/maintenance/tasks/{task_id}/logs", response_model=list[MaintenanceLogOut])
+def list_logs(
+    task_id: int = Path(ge=1),
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_current_auth),
+) -> list[MaintenanceLog]:
+    """List all maintenance logs for a task."""
+    task = (
+        db.execute(
+            select(MaintenanceTask)
+            .join(Vessel)
+            .where(MaintenanceTask.id == task_id, Vessel.org_id == auth.org_id)
+        )
+        .scalars()
+        .one_or_none()
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    logs = (
+        db.execute(
+            select(MaintenanceLog)
+            .where(MaintenanceLog.maintenance_task_id == task_id)
+            .order_by(MaintenanceLog.performed_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    
+    # Load user info for each log
+    user_ids = {log.performed_by_user_id for log in logs}
+    if user_ids:
+        users = (
+            db.execute(select(User).where(User.id.in_(user_ids)))
+            .scalars()
+            .all()
+        )
+        user_map = {user.id: user for user in users}
+        for log in logs:
+            user = user_map.get(log.performed_by_user_id)
+            if user:
+                # Add user info as attributes (Pydantic will include them with extra="allow")
+                setattr(log, "performed_by_name", user.name)
+                setattr(log, "performed_by_email", user.email)
+    
+    return logs

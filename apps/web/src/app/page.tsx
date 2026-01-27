@@ -1,9 +1,12 @@
 "use client";
 
+import { useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { listVessels, createVessel, type VesselCreate } from "@/lib/api";
+import { useApi } from "@/hooks/use-api";
+import { useOrg } from "@/contexts/org-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,27 +23,24 @@ import Link from "next/link";
 function AddVesselDialog({
   open,
   onOpenChange,
+  onCreate,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCreate: (data: any) => void;
 }) {
-  const queryClient = useQueryClient();
-  const [formData, setFormData] = useState<VesselCreate>({
+  const [formData, setFormData] = useState({
     name: "",
-    make: null,
-    model: null,
-    year: null,
-    description: null,
-    location: null,
+    make: null as string | null,
+    model: null as string | null,
+    year: null as number | null,
+    description: null as string | null,
+    location: null as string | null,
   });
   const [errors, setErrors] = useState<{ name?: string }>({});
 
-  const createMutation = useMutation({
-    mutationFn: createVessel,
-    onSuccess: () => {
-      toast.success("Vessel created successfully");
-      queryClient.invalidateQueries({ queryKey: ["vessels"] });
-      onOpenChange(false);
+  useEffect(() => {
+    if (!open) {
       setFormData({
         name: "",
         make: null,
@@ -50,11 +50,8 @@ function AddVesselDialog({
         location: null,
       });
       setErrors({});
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to create vessel");
-    },
-  });
+    }
+  }, [open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,7 +59,7 @@ function AddVesselDialog({
       setErrors({ name: "Name is required" });
       return;
     }
-    createMutation.mutate(formData);
+    onCreate(formData);
   };
 
   return (
@@ -165,13 +162,10 @@ function AddVesselDialog({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={createMutation.isPending}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
-              {createMutation.isPending ? "Creating..." : "Create Vessel"}
-            </Button>
+            <Button type="submit">Create Vessel</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -211,12 +205,114 @@ function VesselCard({ vessel }: { vessel: any }) {
 }
 
 export default function DashboardPage() {
+  const { isSignedIn, isLoaded } = useUser();
+  const router = useRouter();
+  const { orgId } = useOrg();
+  const api = useApi();
+  const queryClient = useQueryClient();
   const [addVesselOpen, setAddVesselOpen] = useState(false);
 
-  const { data: vessels, isLoading, error } = useQuery({
-    queryKey: ["vessels"],
-    queryFn: listVessels,
+  const { data: me, isLoading: meLoading, error: meError } = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api.getMe(),
+    enabled: isSignedIn === true,
+    retry: 1,
   });
+
+  // Redirect to onboarding if no orgs
+  useEffect(() => {
+    if (isLoaded && isSignedIn && me) {
+      const activeOrgs = me.memberships.filter((m) => m.status === "ACTIVE");
+      if (activeOrgs.length === 0) {
+        router.push("/onboarding");
+      }
+    }
+  }, [isLoaded, isSignedIn, me, router]);
+
+  const { data: vessels, isLoading, error } = useQuery({
+    queryKey: ["vessels", orgId],
+    queryFn: () => api.listVessels(),
+    enabled: !!orgId && isSignedIn === true,
+  });
+
+  const createVesselMutation = useMutation({
+    mutationFn: (data: any) => api.createVessel(data),
+    onSuccess: () => {
+      toast.success("Vessel created successfully");
+      queryClient.invalidateQueries({ queryKey: ["vessels", orgId] });
+      setAddVesselOpen(false);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to create vessel");
+    },
+  });
+
+  if (!isLoaded || (isSignedIn && meLoading)) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-center">Loading...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isSignedIn && meError) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-center text-destructive">
+              Error loading user data: {meError instanceof Error ? meError.message : "Unknown error"}
+            </p>
+            <p className="text-center text-sm text-muted-foreground mt-2">
+              Please check your connection and try refreshing the page.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isSignedIn && !me) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-center">Loading user data...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isSignedIn && !orgId && me) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-center">Loading organization...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-center text-muted-foreground">
+              Please sign in to view vessels
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -274,7 +370,11 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <AddVesselDialog open={addVesselOpen} onOpenChange={setAddVesselOpen} />
+      <AddVesselDialog
+        open={addVesselOpen}
+        onOpenChange={setAddVesselOpen}
+        onCreate={(data) => createVesselMutation.mutate(data)}
+      />
     </div>
   );
 }

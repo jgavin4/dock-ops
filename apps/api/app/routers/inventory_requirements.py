@@ -8,8 +8,11 @@ from sqlalchemy.orm import Session
 from app.deps import AuthContext
 from app.deps import get_current_auth
 from app.deps import get_db
+from app.models import InventoryCheckLine
 from app.models import Vessel
 from app.models import VesselInventoryRequirement
+from app.permissions import can_edit_inventory_requirements
+from app.schemas import InventoryCheckLineOut
 from app.schemas import InventoryRequirementCreate
 from app.schemas import InventoryRequirementOut
 from app.schemas import InventoryRequirementUpdate
@@ -33,7 +36,7 @@ def verify_vessel_access(
     return vessel
 
 
-@router.get("/vessels/{vessel_id}", response_model=list[InventoryRequirementOut])
+@router.get("/api/vessels/{vessel_id}/inventory/requirements", response_model=list[InventoryRequirementOut])
 def list_requirements(
     vessel_id: int = Path(ge=1),
     db: Session = Depends(get_db),
@@ -61,6 +64,8 @@ def create_requirement(
     auth: AuthContext = Depends(get_current_auth),
 ) -> VesselInventoryRequirement:
     """Create a new inventory requirement for a vessel."""
+    if not can_edit_inventory_requirements(auth):
+        raise HTTPException(status_code=403, detail="Insufficient permissions to edit inventory requirements")
     vessel = verify_vessel_access(vessel_id, db, auth)
     requirement = VesselInventoryRequirement(
         vessel_id=vessel.id,
@@ -115,6 +120,8 @@ def delete_requirement(
     auth: AuthContext = Depends(get_current_auth),
 ) -> None:
     """Delete an inventory requirement."""
+    if not can_edit_inventory_requirements(auth):
+        raise HTTPException(status_code=403, detail="Insufficient permissions to edit inventory requirements")
     requirement = (
         db.execute(
             select(VesselInventoryRequirement)
@@ -132,3 +139,37 @@ def delete_requirement(
 
     db.delete(requirement)
     db.commit()
+
+
+@router.get("/api/inventory/requirements/{requirement_id}/history", response_model=list[InventoryCheckLineOut])
+def get_requirement_history(
+    requirement_id: int = Path(ge=1),
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_current_auth),
+) -> list[InventoryCheckLine]:
+    """Get history of inventory check lines for a requirement."""
+    requirement = (
+        db.execute(
+            select(VesselInventoryRequirement)
+            .join(Vessel)
+            .where(
+                VesselInventoryRequirement.id == requirement_id,
+                Vessel.org_id == auth.org_id,
+            )
+        )
+        .scalars()
+        .one_or_none()
+    )
+    if not requirement:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+
+    lines = (
+        db.execute(
+            select(InventoryCheckLine)
+            .where(InventoryCheckLine.requirement_id == requirement_id)
+            .order_by(InventoryCheckLine.updated_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return lines

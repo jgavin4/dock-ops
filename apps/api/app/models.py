@@ -35,11 +35,24 @@ class MaintenanceCadenceType(str, enum.Enum):
     SPECIFIC_DATE = "specific_date"
 
 
+class OrgRole(str, enum.Enum):
+    ADMIN = "ADMIN"
+    MANAGER = "MANAGER"
+    TECH = "TECH"
+
+
+class MembershipStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    INVITED = "INVITED"
+    DISABLED = "DISABLED"
+
+
 class Organization(Base):
     __tablename__ = "organizations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -56,14 +69,21 @@ class Organization(Base):
     vessels: Mapped[list[Vessel]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
     )
+    invites: Mapped[list["OrgInvite"]] = relationship(
+        back_populates="organization", cascade="all, delete-orphan"
+    )
 
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("auth_provider", "auth_subject", name="uq_users_auth_provider_subject"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    auth_provider: Mapped[str] = mapped_column(String(50), nullable=False, default="clerk", server_default="clerk")
+    auth_subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[Optional[str]] = mapped_column(String(255))
+    is_super_admin: Mapped[bool] = mapped_column(default=False, server_default="false")
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -77,6 +97,9 @@ class User(Base):
     memberships: Mapped[list[OrgMembership]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    sent_invites: Mapped[list["OrgInvite"]] = relationship(
+        back_populates="invited_by", foreign_keys="[OrgInvite.invited_by_user_id]"
+    )
 
 
 class OrgMembership(Base):
@@ -86,11 +109,20 @@ class OrgMembership(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    role: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="member", server_default="member"
+    role: Mapped[OrgRole] = mapped_column(
+        Enum(OrgRole), nullable=False, default=OrgRole.TECH, server_default="TECH"
+    )
+    status: Mapped[MembershipStatus] = mapped_column(
+        Enum(MembershipStatus), nullable=False, default=MembershipStatus.ACTIVE, server_default="ACTIVE"
     )
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
     organization: Mapped[Organization] = relationship(back_populates="memberships")
@@ -293,3 +325,56 @@ class VesselComment(Base):
 
     vessel: Mapped[Vessel] = relationship(back_populates="comments")
     user: Mapped[User] = relationship()
+
+
+class OrgInvite(Base):
+    __tablename__ = "org_invites"
+    __table_args__ = (Index("ix_org_invites_org_id", "org_id"), Index("ix_org_invites_token", "token"))
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[OrgRole] = mapped_column(Enum(OrgRole), nullable=False)
+    token: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    invited_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    expires_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    organization: Mapped[Organization] = relationship(back_populates="invites")
+    invited_by: Mapped[User] = relationship(foreign_keys=[invited_by_user_id])
+
+
+class OrgRequestStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class OrganizationRequest(Base):
+    __tablename__ = "organization_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    requested_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    org_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[OrgRequestStatus] = mapped_column(
+        Enum(OrgRequestStatus), nullable=False, default=OrgRequestStatus.PENDING, server_default="PENDING"
+    )
+    reviewed_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    reviewed_at: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    requested_by: Mapped[User] = relationship(foreign_keys=[requested_by_user_id])
+    reviewed_by: Mapped[Optional[User]] = relationship(foreign_keys=[reviewed_by_user_id])
