@@ -300,6 +300,19 @@ export function useApi() {
           token
         )
       ),
+    // Import
+    importVessels: (file: File) =>
+      withAuth((token, orgId) =>
+        api.importVessels(file, orgId, token)
+      ),
+    importInventoryRequirements: (vesselId: number, file: File) =>
+      withAuth((token, orgId) =>
+        api.importInventoryRequirements(vesselId, file, orgId, token)
+      ),
+    importMaintenanceTasks: (vesselId: number, file: File) =>
+      withAuth((token, orgId) =>
+        api.importMaintenanceTasks(vesselId, file, orgId, token)
+      ),
     // Super Admin endpoints
     listAllOrgs: () =>
       withAuth((token) =>
@@ -319,6 +332,22 @@ export function useApi() {
     listAllUsers: () =>
       withAuth((token) =>
         api.apiRequest<api.User[]>("/api/admin/users", {}, null, token)
+      ),
+    listAllOrgRequests: () =>
+      withAuth((token) =>
+        api.apiRequest<api.OrganizationRequest[]>("/api/admin/orgs/requests", {}, null, token)
+      ),
+    reviewOrgRequestSuperAdmin: (requestId: number, data: { status: string; review_notes?: string }) =>
+      withAuth((token) =>
+        api.apiRequest<api.OrganizationRequest>(
+          `/api/admin/orgs/requests/${requestId}/review`,
+          {
+            method: "POST",
+            body: JSON.stringify(data),
+          },
+          null,
+          token
+        )
       ),
   };
 }

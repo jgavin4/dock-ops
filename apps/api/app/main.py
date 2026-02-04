@@ -7,6 +7,7 @@ from app.routers.inventory_requirements import router as inventory_requirements_
 from app.routers.maintenance import router as maintenance_router
 from app.routers.orgs import router as orgs_router
 from app.routers.vessels import router as vessels_router
+from app.routers.imports import router as imports_router
 
 app = FastAPI(title="vessel-ops API")
 
@@ -27,6 +28,7 @@ app.include_router(inventory_requirements_router)
 app.include_router(inventory_checks_router)
 app.include_router(maintenance_router)
 app.include_router(comments_router)
+app.include_router(imports_router)
 
 @app.get("/health")
 def health():

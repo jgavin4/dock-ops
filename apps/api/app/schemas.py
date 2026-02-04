@@ -226,7 +226,7 @@ class OrganizationBase(BaseModel):
 
 
 class OrganizationCreate(OrganizationBase):
-    pass
+    force: Optional[bool] = Field(default=False, description="Force creation even if user already has an org with this name")
 
 
 class OrganizationOut(OrganizationBase):

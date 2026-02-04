@@ -66,7 +66,48 @@ def create_org(
     
     Note: This endpoint directly creates the org. For approval workflow,
     use POST /api/orgs/requests instead.
+    
+    If the user already created an org with this name or is a member of one,
+    returns 409 Conflict unless force=true is set.
     """
+    if not payload.force:
+        # Check if user already created an org with this name
+        user_created_orgs = (
+            db.execute(
+                select(Organization)
+                .join(OrgMembership, Organization.id == OrgMembership.org_id)
+                .where(
+                    OrgMembership.user_id == user.id,
+                    OrgMembership.role == OrgRole.ADMIN,
+                    Organization.name == payload.name
+                )
+            )
+            .scalars()
+            .first()
+        )
+        
+        # Check if user is already a member of an org with this name
+        user_member_orgs = (
+            db.execute(
+                select(Organization)
+                .join(OrgMembership, Organization.id == OrgMembership.org_id)
+                .where(
+                    OrgMembership.user_id == user.id,
+                    OrgMembership.status == MembershipStatus.ACTIVE,
+                    Organization.name == payload.name
+                )
+            )
+            .scalars()
+            .first()
+        )
+        
+        if user_created_orgs or user_member_orgs:
+            org_type = "created" if user_created_orgs else "a member of"
+            raise HTTPException(
+                status_code=409,
+                detail=f"You have already {org_type} an organization named '{payload.name}'. Set force=true to create another organization with this name."
+            )
+    
     org = Organization(name=payload.name)
     db.add(org)
     db.flush()
@@ -90,40 +131,45 @@ def create_org_request(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> OrganizationRequest:
-    """Request to create a new organization (requires admin approval)."""
-    # Check if user already has a pending request
-    existing_request = (
-        db.execute(
-            select(OrganizationRequest).where(
-                OrganizationRequest.requested_by_user_id == user.id,
-                OrganizationRequest.status == OrgRequestStatus.PENDING
-            )
-        )
-        .scalars()
-        .one_or_none()
-    )
-    if existing_request:
-        raise HTTPException(
-            status_code=400,
-            detail="You already have a pending organization request"
-        )
+    """Request to create a new organization (requires admin approval).
     
-    # Check if user already has an active organization
-    existing_membership = (
-        db.execute(
-            select(OrgMembership).where(
-                OrgMembership.user_id == user.id,
-                OrgMembership.status == MembershipStatus.ACTIVE
+    Super admins can bypass restrictions and create multiple requests.
+    """
+    # Super admins can bypass restrictions
+    if not user.is_super_admin:
+        # Check if user already has a pending request
+        existing_request = (
+            db.execute(
+                select(OrganizationRequest).where(
+                    OrganizationRequest.requested_by_user_id == user.id,
+                    OrganizationRequest.status == OrgRequestStatus.PENDING
+                )
             )
+            .scalars()
+            .one_or_none()
         )
-        .scalars()
-        .first()
-    )
-    if existing_membership:
-        raise HTTPException(
-            status_code=400,
-            detail="You are already a member of an organization"
+        if existing_request:
+            raise HTTPException(
+                status_code=400,
+                detail="You already have a pending organization request"
+            )
+        
+        # Check if user already has an active organization
+        existing_membership = (
+            db.execute(
+                select(OrgMembership).where(
+                    OrgMembership.user_id == user.id,
+                    OrgMembership.status == MembershipStatus.ACTIVE
+                )
+            )
+            .scalars()
+            .first()
         )
+        if existing_membership:
+            raise HTTPException(
+                status_code=400,
+                detail="You are already a member of an organization"
+            )
     
     # Create request
     request = OrganizationRequest(
@@ -596,3 +642,87 @@ def list_all_users(
     """List all users (Super Admin only)."""
     users = db.execute(select(User).order_by(User.created_at.desc())).scalars().all()
     return users
+
+
+@router.get("/api/admin/orgs/requests", response_model=list[OrganizationRequestOut])
+def list_all_org_requests(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+) -> list[OrganizationRequest]:
+    """List all organization requests (Super Admin only)."""
+    requests = (
+        db.execute(
+            select(OrganizationRequest)
+            .order_by(OrganizationRequest.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    
+    # Load user info for each request
+    for req in requests:
+        requested_by = db.execute(
+            select(User).where(User.id == req.requested_by_user_id)
+        ).scalar_one()
+        req.requested_by_email = requested_by.email
+        req.requested_by_name = requested_by.name
+    
+    return requests
+
+
+@router.post("/api/admin/orgs/requests/{request_id}/review", response_model=OrganizationRequestOut)
+def review_org_request_super_admin(
+    payload: OrganizationRequestReview,
+    request_id: int = Path(ge=1),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+) -> OrganizationRequest:
+    """Approve or reject an organization request (Super Admin only)."""
+    request = (
+        db.execute(
+            select(OrganizationRequest).where(OrganizationRequest.id == request_id)
+        )
+        .scalars()
+        .one_or_none()
+    )
+    
+    if not request:
+        raise HTTPException(status_code=404, detail="Organization request not found")
+    
+    if request.status != OrgRequestStatus.PENDING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Request is already {request.status.value}"
+        )
+    
+    new_status = OrgRequestStatus(payload.status)
+    request.status = new_status
+    request.reviewed_by_user_id = user.id
+    request.review_notes = payload.review_notes
+    request.reviewed_at = datetime.now(timezone.utc)
+    
+    # If approved, create the organization and membership
+    if new_status == OrgRequestStatus.APPROVED:
+        org = Organization(name=request.org_name)
+        db.add(org)
+        db.flush()
+        
+        membership = OrgMembership(
+            org_id=org.id,
+            user_id=request.requested_by_user_id,
+            role=OrgRole.ADMIN,
+            status=MembershipStatus.ACTIVE
+        )
+        db.add(membership)
+    
+    db.commit()
+    db.refresh(request)
+    
+    # Load user info
+    requested_by = db.execute(
+        select(User).where(User.id == request.requested_by_user_id)
+    ).scalar_one()
+    request.requested_by_email = requested_by.email
+    request.requested_by_name = requested_by.name
+    
+    return request

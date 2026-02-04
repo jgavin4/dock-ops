@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useApi } from "@/hooks/use-api";
 import { getVessel, updateVessel, type VesselUpdate } from "@/lib/api";
 import {
   listInventoryRequirements,
@@ -45,6 +46,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ImportDialog } from "@/components/import-dialog";
 import Link from "next/link";
 import { format } from "date-fns";
 
@@ -214,6 +216,7 @@ function OverviewTab({ vessel }: { vessel: any }) {
 }
 
 function InventoryTab({ vesselId }: { vesselId: number }) {
+  const api = useApi();
   const queryClient = useQueryClient();
   const [requirementModalOpen, setRequirementModalOpen] = useState(false);
   const [editingRequirement, setEditingRequirement] =
@@ -222,6 +225,7 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
     null
   );
   const [inProgressCheckId, setInProgressCheckId] = useState<number | null>(null);
+  const [importRequirementOpen, setImportRequirementOpen] = useState(false);
 
   const { data: requirements, isLoading: requirementsLoading } = useQuery({
     queryKey: ["inventory-requirements", vesselId],
@@ -633,6 +637,32 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
           </DialogContent>
         </Dialog>
       )}
+      
+      <ImportDialog
+        open={importRequirementOpen}
+        onOpenChange={setImportRequirementOpen}
+        title="Import Inventory Requirements"
+        description="Upload a CSV or Excel file to import multiple inventory requirements at once."
+        exampleColumns={[
+          "item_name (required)",
+          "required_quantity (required, default: 1)",
+          "category (optional)",
+          "critical (optional, default: false)",
+          "notes (optional)",
+        ]}
+        onImport={async (file) => await api.importInventoryRequirements(vesselId, file)}
+        onSuccess={(result) => {
+          if (result.success && result.created_count > 0) {
+            toast.success(`Successfully imported ${result.created_count} requirement(s)`);
+            queryClient.invalidateQueries({
+              queryKey: ["inventory-requirements", vesselId],
+            });
+          }
+          if (result.error_count > 0) {
+            toast.error(`${result.error_count} error(s) occurred during import`);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -1075,6 +1105,7 @@ function InventoryCheckView({
 }
 
 function MaintenanceTab({ vesselId }: { vesselId: number }) {
+  const api = useApi();
   const queryClient = useQueryClient();
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<any>(null);
@@ -1082,6 +1113,7 @@ function MaintenanceTab({ vesselId }: { vesselId: number }) {
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [viewingLogsTaskId, setViewingLogsTaskId] = useState<number | null>(null);
   const [filter, setFilter] = useState<"all" | "overdue" | "due_soon" | "active">("all");
+  const [importTaskOpen, setImportTaskOpen] = useState(false);
 
   const { data: tasks, isLoading: tasksLoading } = useQuery({
     queryKey: ["maintenance-tasks", vesselId],
@@ -1204,7 +1236,12 @@ function MaintenanceTab({ vesselId }: { vesselId: number }) {
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle>Maintenance Status</CardTitle>
-            <Button onClick={() => setTaskModalOpen(true)}>Add Task</Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportTaskOpen(true)}>
+                Import
+              </Button>
+              <Button onClick={() => setTaskModalOpen(true)}>Add Task</Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -1504,6 +1541,34 @@ function MaintenanceTab({ vesselId }: { vesselId: number }) {
           isSaving={createLogMutation.isPending}
         />
       )}
+      
+      <ImportDialog
+        open={importTaskOpen}
+        onOpenChange={setImportTaskOpen}
+        title="Import Maintenance Tasks"
+        description="Upload a CSV or Excel file to import multiple maintenance tasks at once."
+        exampleColumns={[
+          "name (required)",
+          "description (optional)",
+          "cadence_type (required: 'interval' or 'specific_date')",
+          "interval_days (required if cadence_type='interval')",
+          "due_date (required if cadence_type='specific_date', format: YYYY-MM-DD)",
+          "critical (optional, default: false)",
+          "is_active (optional, default: true)",
+        ]}
+        onImport={async (file) => await api.importMaintenanceTasks(vesselId, file)}
+        onSuccess={(result) => {
+          if (result.success && result.created_count > 0) {
+            toast.success(`Successfully imported ${result.created_count} task(s)`);
+            queryClient.invalidateQueries({
+              queryKey: ["maintenance-tasks", vesselId],
+            });
+          }
+          if (result.error_count > 0) {
+            toast.error(`${result.error_count} error(s) occurred during import`);
+          }
+        }}
+      />
     </div>
   );
 }

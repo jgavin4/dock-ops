@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ImportDialog } from "@/components/import-dialog";
 import Link from "next/link";
 
 function AddVesselDialog({
@@ -211,6 +212,7 @@ export default function DashboardPage() {
   const api = useApi();
   const queryClient = useQueryClient();
   const [addVesselOpen, setAddVesselOpen] = useState(false);
+  const [importVesselOpen, setImportVesselOpen] = useState(false);
 
   const { data: me, isLoading: meLoading, error: meError } = useQuery({
     queryKey: ["me"],
@@ -348,7 +350,12 @@ export default function DashboardPage() {
     <div>
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Vessels</h1>
-        <Button onClick={() => setAddVesselOpen(true)}>Add Vessel</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportVesselOpen(true)}>
+            Import
+          </Button>
+          <Button onClick={() => setAddVesselOpen(true)}>Add Vessel</Button>
+        </div>
       </div>
 
       {vessels && vessels.length > 0 ? (

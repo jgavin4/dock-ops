@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 
 export default function AdminPage() {
@@ -32,10 +31,6 @@ export default function AdminPage() {
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"ADMIN" | "MANAGER" | "TECH">("TECH");
-  const [reviewModalOpen, setReviewModalOpen] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<any>(null);
-  const [reviewNotes, setReviewNotes] = useState("");
-  const [reviewAction, setReviewAction] = useState<"APPROVED" | "REJECTED">("APPROVED");
 
   const { data: members, isLoading: membersLoading } = useQuery({
     queryKey: ["org-members", orgId],
@@ -43,11 +38,6 @@ export default function AdminPage() {
     enabled: !!orgId && isSignedIn === true,
   });
 
-  const { data: orgRequests, isLoading: orgRequestsLoading } = useQuery({
-    queryKey: ["org-requests"],
-    queryFn: () => api.listOrgRequests(),
-    enabled: isSignedIn === true,
-  });
 
   const createInviteMutation = useMutation({
     mutationFn: (data: { email: string; role: "ADMIN" | "MANAGER" | "TECH" }) =>
@@ -91,28 +81,6 @@ export default function AdminPage() {
     },
   });
 
-  const reviewRequestMutation = useMutation({
-    mutationFn: ({
-      requestId,
-      status,
-      notes,
-    }: {
-      requestId: number;
-      status: string;
-      notes?: string;
-    }) => api.reviewOrgRequest(requestId, { status, review_notes: notes }),
-    onSuccess: () => {
-      toast.success("Organization request reviewed successfully");
-      setReviewModalOpen(false);
-      setSelectedRequest(null);
-      setReviewNotes("");
-      queryClient.invalidateQueries({ queryKey: ["org-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["me"] });
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to review request");
-    },
-  });
 
   if (!isSignedIn) {
     router.push("/");
@@ -252,73 +220,6 @@ export default function AdminPage() {
         </CardContent>
       </Card>
 
-      {/* Organization Requests */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Organization Requests</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {orgRequestsLoading ? (
-            <div className="space-y-2">
-              {[1, 2].map((i) => (
-                <div key={i} className="h-16 bg-muted rounded animate-pulse" />
-              ))}
-            </div>
-          ) : !orgRequests || orgRequests.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">
-              No pending organization requests.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {orgRequests.map((request: any) => (
-                <div
-                  key={request.id}
-                  className="border rounded-lg p-4 space-y-2"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-lg">{request.org_name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        Requested by: {request.requested_by_name || request.requested_by_email}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {format(new Date(request.created_at), "PPp")}
-                      </p>
-                    </div>
-                    <Badge variant="secondary">{request.status}</Badge>
-                  </div>
-                  {request.status === "PENDING" && (
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setSelectedRequest(request);
-                          setReviewAction("APPROVED");
-                          setReviewModalOpen(true);
-                        }}
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => {
-                          setSelectedRequest(request);
-                          setReviewAction("REJECTED");
-                          setReviewModalOpen(true);
-                        }}
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Invite Modal */}
       <Dialog open={inviteModalOpen} onOpenChange={setInviteModalOpen}>
         <DialogContent>
@@ -368,75 +269,6 @@ export default function AdminPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Review Request Modal */}
-      <Dialog open={reviewModalOpen} onOpenChange={setReviewModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {reviewAction === "APPROVED" ? "Approve" : "Reject"} Organization Request
-            </DialogTitle>
-          </DialogHeader>
-          {selectedRequest && (
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium">Organization Name:</p>
-                <p className="text-lg">{selectedRequest.org_name}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium">Requested By:</p>
-                <p>
-                  {selectedRequest.requested_by_name || selectedRequest.requested_by_email}
-                </p>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">
-                  Review Notes (optional)
-                </label>
-                <Textarea
-                  value={reviewNotes}
-                  onChange={(e) => setReviewNotes(e.target.value)}
-                  placeholder="Add any notes about this decision..."
-                  rows={3}
-                />
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setReviewModalOpen(false);
-                setSelectedRequest(null);
-                setReviewNotes("");
-              }}
-              disabled={reviewRequestMutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant={reviewAction === "APPROVED" ? "default" : "destructive"}
-              onClick={() => {
-                if (selectedRequest) {
-                  reviewRequestMutation.mutate({
-                    requestId: selectedRequest.id,
-                    status: reviewAction,
-                    notes: reviewNotes || undefined,
-                  });
-                }
-              }}
-              disabled={reviewRequestMutation.isPending}
-            >
-              {reviewRequestMutation.isPending
-                ? "Processing..."
-                : reviewAction === "APPROVED"
-                ? "Approve"
-                : "Reject"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
