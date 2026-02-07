@@ -5,7 +5,7 @@ import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/rea
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useApi } from "@/hooks/use-api";
-import type { VesselUpdate } from "@/lib/api";
+import type { VesselUpdate, InventoryGroup, InventoryGroupCreate, InventoryGroupUpdate } from "@/lib/api";
 import type {
   InventoryRequirement,
   InventoryRequirementCreate,
@@ -210,10 +210,19 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
   );
   const [inProgressCheckId, setInProgressCheckId] = useState<number | null>(null);
   const [importRequirementOpen, setImportRequirementOpen] = useState(false);
+  const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<InventoryGroup | null>(null);
+  const [deleteGroupId, setDeleteGroupId] = useState<number | null>(null);
+  const [selectedGroupFilter, setSelectedGroupFilter] = useState<number | "all" | "ungrouped">("all");
 
   const { data: requirements, isLoading: requirementsLoading } = useQuery({
     queryKey: ["inventory-requirements", vesselId],
     queryFn: () => listInventoryRequirements(vesselId),
+  });
+
+  const { data: groups, isLoading: groupsLoading } = useQuery({
+    queryKey: ["inventory-groups", vesselId],
+    queryFn: () => api.listInventoryGroups(vesselId),
   });
 
   const { data: checks } = useQuery({
@@ -382,17 +391,165 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
     },
   });
 
+  // Group mutations
+  const createGroupMutation = useMutation({
+    mutationFn: (payload: InventoryGroupCreate) =>
+      api.createInventoryGroup(vesselId, payload),
+    onSuccess: () => {
+      toast.success("Group created successfully");
+      queryClient.invalidateQueries({
+        queryKey: ["inventory-groups", vesselId],
+      });
+      setGroupModalOpen(false);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to create group");
+    },
+  });
+
+  const updateGroupMutation = useMutation({
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: number;
+      payload: InventoryGroupUpdate;
+    }) => api.updateInventoryGroup(id, payload),
+    onSuccess: () => {
+      toast.success("Group updated successfully");
+      queryClient.invalidateQueries({
+        queryKey: ["inventory-groups", vesselId],
+      });
+      setGroupModalOpen(false);
+      setEditingGroup(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to update group");
+    },
+  });
+
+  const deleteGroupMutation = useMutation({
+    mutationFn: (id: number) => api.deleteInventoryGroup(id),
+    onSuccess: () => {
+      toast.success("Group deleted successfully");
+      queryClient.invalidateQueries({
+        queryKey: ["inventory-groups", vesselId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["inventory-requirements", vesselId],
+      });
+      setDeleteGroupId(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to delete group");
+    },
+  });
+
+  // Group requirements by group
+  const groupedRequirements = React.useMemo(() => {
+    if (!requirements) return { grouped: {}, ungrouped: [] };
+    
+    const grouped: Record<number, InventoryRequirement[]> = {};
+    const ungrouped: InventoryRequirement[] = [];
+    
+    requirements.forEach((req) => {
+      if (req.parent_group_id) {
+        if (!grouped[req.parent_group_id]) {
+          grouped[req.parent_group_id] = [];
+        }
+        grouped[req.parent_group_id].push(req);
+      } else {
+        ungrouped.push(req);
+      }
+    });
+    
+    return { grouped, ungrouped };
+  }, [requirements]);
+
+  // Filter requirements based on selected group
+  const filteredRequirements = React.useMemo(() => {
+    if (selectedGroupFilter === "all") {
+      return requirements || [];
+    } else if (selectedGroupFilter === "ungrouped") {
+      return groupedRequirements.ungrouped;
+    } else {
+      return groupedRequirements.grouped[selectedGroupFilter] || [];
+    }
+  }, [requirements, selectedGroupFilter, groupedRequirements]);
+
 
   return (
     <div className="space-y-6">
+      {/* Groups Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle>Inventory Groups</CardTitle>
+            <Button onClick={() => setGroupModalOpen(true)}>
+              Add Group
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {groupsLoading ? (
+            <div className="space-y-2">
+              {[1, 2].map((i) => (
+                <div key={i} className="h-12 bg-muted rounded animate-pulse" />
+              ))}
+            </div>
+          ) : !groups || groups.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground mb-4 text-sm">
+                No groups yet. Create groups to organize your inventory.
+              </p>
+              <Button onClick={() => setGroupModalOpen(true)} size="sm">
+                Add Group
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={selectedGroupFilter === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedGroupFilter("all")}
+              >
+                All ({requirements?.length || 0})
+              </Button>
+              <Button
+                variant={selectedGroupFilter === "ungrouped" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedGroupFilter("ungrouped")}
+              >
+                Ungrouped ({groupedRequirements.ungrouped.length})
+              </Button>
+              {groups.map((group) => (
+                <Button
+                  key={group.id}
+                  variant={selectedGroupFilter === group.id ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedGroupFilter(group.id)}
+                >
+                  {group.name} ({groupedRequirements.grouped[group.id]?.length || 0})
+                </Button>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Requirements List */}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle>Inventory Requirements</CardTitle>
-            <Button onClick={() => setRequirementModalOpen(true)}>
-              Add Requirement
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportRequirementOpen(true)}>
+                Import
+              </Button>
+              <Button onClick={() => setRequirementModalOpen(true)}>
+                Add Requirement
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -411,158 +568,275 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
                 Add Requirement
               </Button>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {requirements.map((req) => {
-                const currentQty = latestQuantities[req.id]?.qty ?? 0;
-                const lastUpdated = latestQuantities[req.id]?.updatedAt;
-                const isMissing = currentQty < req.required_quantity;
+          ) : selectedGroupFilter === "all" ? (
+            // Show grouped view when "all" is selected
+            <div className="space-y-6">
+              {/* Show ungrouped items first */}
+              {groupedRequirements.ungrouped.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground mb-3">
+                    Ungrouped Items
+                  </h3>
+                  <div className="space-y-3">
+                    {groupedRequirements.ungrouped.map((req) => {
+                      return renderRequirementCard(req);
+                    })}
+                  </div>
+                </div>
+              )}
+              {/* Show grouped items */}
+              {groups?.map((group) => {
+                const groupReqs = groupedRequirements.grouped[group.id] || [];
+                if (groupReqs.length === 0) return null;
                 return (
-                  <div
-                    key={req.id}
-                    className={`border rounded-lg p-4 ${
-                      req.critical && isMissing
-                        ? "border-destructive bg-destructive/5"
-                        : ""
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h4 className="font-medium">{req.item_name}</h4>
-                          {req.critical && (
-                            <Badge variant="destructive" className="text-xs">
-                              Critical
-                            </Badge>
-                          )}
-                          {req.category && (
-                            <Badge variant="outline" className="text-xs">
-                              {req.category}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-sm text-muted-foreground space-y-1">
-                          <p>
-                            Required: {req.required_quantity} | Current:{" "}
-                            <span
-                              className={
-                                isMissing ? "text-destructive font-medium" : ""
-                              }
-                            >
-                              {currentQty}
-                            </span>
-                            {isMissing && (
-                              <span className="text-destructive ml-1">
-                                ({req.required_quantity - currentQty} missing)
-                              </span>
-                            )}
-                          </p>
-                          <div className="flex items-center gap-2">
-                            <p className="text-xs">
-                              {lastUpdated
-                                ? `Last updated: ${format(new Date(lastUpdated), "PPp")}`
-                                : `Created: ${format(new Date(req.created_at), "PPp")}`}
-                            </p>
-                            {lastUpdated &&
-                              latestQuantities[req.id] &&
-                              (latestQuantities[req.id].userName ||
-                                latestQuantities[req.id].userEmail) && (
-                                <span
-                                  className="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-medium bg-primary text-primary-foreground"
-                                  title={
-                                    latestQuantities[req.id].userName ||
-                                    latestQuantities[req.id].userEmail ||
-                                    "Unknown user"
-                                  }
-                                >
-                                  {getUserInitials(
-                                    latestQuantities[req.id].userName,
-                                    latestQuantities[req.id].userEmail
-                                  )}
-                                </span>
-                              )}
-                          </div>
-                          {req.notes && (
-                            <p className="text-xs italic">{req.notes}</p>
-                          )}
-                        </div>
+                  <div key={group.id}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-semibold">{group.name}</h3>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditingGroup(group);
+                            setGroupModalOpen(true);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeleteGroupId(group.id)}
+                        >
+                          Delete
+                        </Button>
                       </div>
-                      <div className="flex items-center gap-3 ml-4">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              updateQuantityMutation.mutate({
-                                requirementId: req.id,
-                                quantity: Math.max(0, currentQty - 1),
-                              })
-                            }
-                            disabled={
-                              currentQty === 0 ||
-                              updateQuantityMutation.isPending
-                            }
-                            className="h-8 w-8 p-0"
-                          >
-                            −
-                          </Button>
-                          <Input
-                            type="number"
-                            value={currentQty}
-                            onChange={(e) => {
-                              const value = parseInt(e.target.value) || 0;
-                              updateQuantityMutation.mutate({
-                                requirementId: req.id,
-                                quantity: value,
-                              });
-                            }}
-                            min="0"
-                            className="w-20 text-center"
-                            disabled={updateQuantityMutation.isPending}
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              updateQuantityMutation.mutate({
-                                requirementId: req.id,
-                                quantity: currentQty + 1,
-                              })
-                            }
-                            disabled={updateQuantityMutation.isPending}
-                            className="h-8 w-8 p-0"
-                          >
-                            +
-                          </Button>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setEditingRequirement(req);
-                              setRequirementModalOpen(true);
-                            }}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setDeleteRequirementId(req.id)}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </div>
+                    </div>
+                    {group.description && (
+                      <p className="text-xs text-muted-foreground mb-3">
+                        {group.description}
+                      </p>
+                    )}
+                    <div className="space-y-3">
+                      {groupReqs.map((req) => renderRequirementCard(req))}
                     </div>
                   </div>
                 );
               })}
             </div>
+          ) : (
+            // Show filtered list
+            <div className="space-y-3">
+              {filteredRequirements.map((req) => renderRequirementCard(req))}
+            </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Group Management Modal */}
+      <GroupModal
+        open={groupModalOpen}
+        onOpenChange={(open) => {
+          setGroupModalOpen(open);
+          if (!open) setEditingGroup(null);
+        }}
+        group={editingGroup}
+        onSave={(payload) => {
+          if (editingGroup) {
+            updateGroupMutation.mutate({
+              id: editingGroup.id,
+              payload: payload as InventoryGroupUpdate,
+            });
+          } else {
+            createGroupMutation.mutate(payload as InventoryGroupCreate);
+          }
+        }}
+        isSaving={
+          createGroupMutation.isPending || updateGroupMutation.isPending
+        }
+      />
+
+      {/* Delete Group Confirmation */}
+      {deleteGroupId && (
+        <Dialog
+          open={!!deleteGroupId}
+          onOpenChange={(open) => !open && setDeleteGroupId(null)}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Group?</DialogTitle>
+            </DialogHeader>
+            <p>
+              This will remove the group but keep all inventory items. Items will
+              become ungrouped.
+            </p>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setDeleteGroupId(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  deleteGroupMutation.mutate(deleteGroupId!);
+                }}
+                disabled={deleteGroupMutation.isPending}
+              >
+                {deleteGroupMutation.isPending ? "Deleting..." : "Delete"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+  // Helper function to render requirement card
+  const renderRequirementCard = (req: InventoryRequirement) => {
+    const currentQty = latestQuantities[req.id]?.qty ?? 0;
+    const lastUpdated = latestQuantities[req.id]?.updatedAt;
+    const isMissing = currentQty < req.required_quantity;
+    return (
+      <div
+        key={req.id}
+        className={`border rounded-lg p-4 ${
+          req.critical && isMissing
+            ? "border-destructive bg-destructive/5"
+            : ""
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h4 className="font-medium">{req.item_name}</h4>
+              {req.critical && (
+                <Badge variant="destructive" className="text-xs">
+                  Critical
+                </Badge>
+              )}
+              {req.category && (
+                <Badge variant="outline" className="text-xs">
+                  {req.category}
+                </Badge>
+              )}
+            </div>
+            <div className="text-sm text-muted-foreground space-y-1">
+              <p>
+                Required: {req.required_quantity} | Current:{" "}
+                <span
+                  className={
+                    isMissing ? "text-destructive font-medium" : ""
+                  }
+                >
+                  {currentQty}
+                </span>
+                {isMissing && (
+                  <span className="text-destructive ml-1">
+                    ({req.required_quantity - currentQty} missing)
+                  </span>
+                )}
+              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs">
+                  {lastUpdated
+                    ? `Last updated: ${format(new Date(lastUpdated), "PPp")}`
+                    : `Created: ${format(new Date(req.created_at), "PPp")}`}
+                </p>
+                {lastUpdated &&
+                  latestQuantities[req.id] &&
+                  (latestQuantities[req.id].userName ||
+                    latestQuantities[req.id].userEmail) && (
+                    <span
+                      className="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-medium bg-primary text-primary-foreground"
+                      title={
+                        latestQuantities[req.id].userName ||
+                        latestQuantities[req.id].userEmail ||
+                        "Unknown user"
+                      }
+                    >
+                      {getUserInitials(
+                        latestQuantities[req.id].userName,
+                        latestQuantities[req.id].userEmail
+                      )}
+                    </span>
+                  )}
+              </div>
+              {req.notes && (
+                <p className="text-xs italic">{req.notes}</p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-3 ml-4">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  updateQuantityMutation.mutate({
+                    requirementId: req.id,
+                    quantity: Math.max(0, currentQty - 1),
+                  })
+                }
+                disabled={
+                  currentQty === 0 ||
+                  updateQuantityMutation.isPending
+                }
+                className="h-8 w-8 p-0"
+              >
+                −
+              </Button>
+              <Input
+                type="number"
+                value={currentQty}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 0;
+                  updateQuantityMutation.mutate({
+                    requirementId: req.id,
+                    quantity: value,
+                  });
+                }}
+                min="0"
+                className="w-20 text-center"
+                disabled={updateQuantityMutation.isPending}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  updateQuantityMutation.mutate({
+                    requirementId: req.id,
+                    quantity: currentQty + 1,
+                  })
+                }
+                disabled={updateQuantityMutation.isPending}
+                className="h-8 w-8 p-0"
+              >
+                +
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setEditingRequirement(req);
+                  setRequirementModalOpen(true);
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteRequirementId(req.id)}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
       {/* Add/Edit Requirement Modal */}
       <RequirementModal
@@ -657,12 +931,14 @@ function RequirementModal({
   requirement,
   onSave,
   isSaving,
+  vesselId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   requirement: InventoryRequirement | null;
   onSave: (payload: InventoryRequirementCreate | InventoryRequirementUpdate) => void;
   isSaving: boolean;
+  vesselId: number;
 }) {
   const api = useApi();
   const [formData, setFormData] = useState({
@@ -671,9 +947,15 @@ function RequirementModal({
     category: "",
     critical: false,
     notes: "",
+    parent_group_id: null as number | null,
   });
   const [errors, setErrors] = useState<{ item_name?: string }>({});
   const [showHistory, setShowHistory] = useState(false);
+
+  const { data: groups } = useQuery({
+    queryKey: ["inventory-groups", vesselId],
+    queryFn: () => api.listInventoryGroups(vesselId),
+  });
 
   const { data: history, isLoading: historyLoading } = useQuery<InventoryCheckLine[]>({
     queryKey: ["requirement-history", requirement?.id],
@@ -689,6 +971,7 @@ function RequirementModal({
         category: requirement.category || "",
         critical: requirement.critical,
         notes: requirement.notes || "",
+        parent_group_id: requirement.parent_group_id,
       });
     } else {
       setFormData({
@@ -697,6 +980,7 @@ function RequirementModal({
         category: "",
         critical: false,
         notes: "",
+        parent_group_id: null,
       });
     }
     setErrors({});
@@ -715,6 +999,7 @@ function RequirementModal({
       category: formData.category || null,
       critical: formData.critical,
       notes: formData.notes || null,
+      parent_group_id: formData.parent_group_id,
     });
   };
 
@@ -773,6 +1058,27 @@ function RequirementModal({
                 }
                 placeholder="Category"
               />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Group</label>
+              <Select
+                value={formData.parent_group_id?.toString() || ""}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    parent_group_id: e.target.value
+                      ? parseInt(e.target.value, 10)
+                      : null,
+                  })
+                }
+              >
+                <option value="">No Group</option>
+                {groups?.map((group) => (
+                  <option key={group.id} value={group.id.toString()}>
+                    {group.name}
+                  </option>
+                ))}
+              </Select>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -862,6 +1168,114 @@ function RequirementModal({
                 )}
               </div>
             )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function GroupModal({
+  open,
+  onOpenChange,
+  group,
+  onSave,
+  isSaving,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  group: InventoryGroup | null;
+  onSave: (payload: InventoryGroupCreate | InventoryGroupUpdate) => void;
+  isSaving: boolean;
+}) {
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+  });
+  const [errors, setErrors] = useState<{ name?: string }>({});
+
+  useEffect(() => {
+    if (group) {
+      setFormData({
+        name: group.name,
+        description: group.description || "",
+      });
+    } else {
+      setFormData({
+        name: "",
+        description: "",
+      });
+    }
+    setErrors({});
+  }, [group, open]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name.trim()) {
+      setErrors({ name: "Group name is required" });
+      return;
+    }
+    onSave({
+      name: formData.name,
+      description: formData.description || null,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {group ? "Edit Group" : "Add Group"}
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                Group Name *
+              </label>
+              <Input
+                value={formData.name}
+                onChange={(e) => {
+                  setFormData({ ...formData, name: e.target.value });
+                  if (errors.name) setErrors({});
+                }}
+                placeholder="Group name (e.g., Bridge, Galley, Engine Room)"
+                required
+              />
+              {errors.name && (
+                <p className="text-sm text-destructive mt-1">
+                  {errors.name}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                Description
+              </label>
+              <Textarea
+                value={formData.description}
+                onChange={(e) =>
+                  setFormData({ ...formData, description: e.target.value })
+                }
+                placeholder="Optional description"
+                rows={3}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button

@@ -8,8 +8,13 @@ import { Header } from "@/components/header";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "dock-ops",
+  title: "DockOps",
   description: "Inventory + maintenance management for vessels",
+  icons: {
+    icon: "/assets/emblem.png",
+    shortcut: "/assets/emblem.png",
+    apple: "/assets/emblem.png",
+  },
 };
 
 export default function RootLayout({

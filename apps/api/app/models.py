@@ -164,14 +164,45 @@ class Vessel(Base):
     comments: Mapped[list["VesselComment"]] = relationship(
         back_populates="vessel", cascade="all, delete-orphan", order_by="VesselComment.created_at.desc()"
     )
+    inventory_groups: Mapped[list["InventoryGroup"]] = relationship(
+        back_populates="vessel", cascade="all, delete-orphan", order_by="InventoryGroup.name"
+    )
+
+
+class InventoryGroup(Base):
+    __tablename__ = "inventory_groups"
+    __table_args__ = (Index("ix_inventory_groups_vessel_id", "vessel_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vessel_id: Mapped[int] = mapped_column(ForeignKey("vessels.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    vessel: Mapped[Vessel] = relationship(back_populates="inventory_groups")
+    requirements: Mapped[list["VesselInventoryRequirement"]] = relationship(
+        back_populates="parent_group"
+    )
 
 
 class VesselInventoryRequirement(Base):
     __tablename__ = "vessel_inventory_requirements"
-    __table_args__ = (Index("ix_vessel_inventory_requirements_vessel_id", "vessel_id"),)
+    __table_args__ = (
+        Index("ix_vessel_inventory_requirements_vessel_id", "vessel_id"),
+        Index("ix_vessel_inventory_requirements_group_id", "parent_group_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     vessel_id: Mapped[int] = mapped_column(ForeignKey("vessels.id"), nullable=False)
+    parent_group_id: Mapped[Optional[int]] = mapped_column(ForeignKey("inventory_groups.id"), nullable=True)
     item_name: Mapped[str] = mapped_column(String(255), nullable=False)
     required_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     category: Mapped[Optional[str]] = mapped_column(String(255))
@@ -188,6 +219,7 @@ class VesselInventoryRequirement(Base):
     )
 
     vessel: Mapped[Vessel] = relationship(back_populates="inventory_requirements")
+    parent_group: Mapped[Optional["InventoryGroup"]] = relationship(back_populates="requirements")
     check_lines: Mapped[list["InventoryCheckLine"]] = relationship(
         back_populates="requirement", cascade="all, delete-orphan"
     )

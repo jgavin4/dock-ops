@@ -94,6 +94,46 @@ export function useApi() {
           token
         )
       ),
+    // Inventory Groups
+    listInventoryGroups: (vesselId: number) =>
+      withAuth((token, orgId) =>
+        api.apiRequest<api.InventoryGroup[]>(
+          `/api/vessels/${vesselId}/inventory/groups`,
+          {},
+          orgId,
+          token
+        )
+      ),
+    createInventoryGroup: (vesselId: number, data: api.InventoryGroupCreate) =>
+      withAuth((token, orgId) =>
+        api.apiRequest<api.InventoryGroup>(
+          `/api/vessels/${vesselId}/inventory/groups`,
+          {
+            method: "POST",
+            body: JSON.stringify(data),
+          },
+          orgId,
+          token
+        )
+      ),
+    updateInventoryGroup: (id: number, data: api.InventoryGroupUpdate) =>
+      withAuth((token, orgId) =>
+        api.apiRequest<api.InventoryGroup>(
+          `/api/inventory/groups/${id}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(data),
+          },
+          orgId,
+          token
+        )
+      ),
+    deleteInventoryGroup: (id: number) =>
+      withAuth((token, orgId) =>
+        api.apiRequest<void>(`/api/inventory/groups/${id}`, {
+          method: "DELETE",
+        }, orgId, token)
+      ),
     listInventoryChecks: (vesselId: number) =>
       withAuth((token, orgId) =>
         api.apiRequest<api.InventoryCheck[]>(

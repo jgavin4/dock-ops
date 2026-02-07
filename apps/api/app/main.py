@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers.comments import router as comments_router
 from app.routers.inventory_checks import router as inventory_checks_router
+from app.routers.inventory_groups import router as inventory_groups_router
 from app.routers.inventory_requirements import router as inventory_requirements_router
 from app.routers.maintenance import router as maintenance_router
 from app.routers.orgs import router as orgs_router
@@ -24,6 +25,7 @@ app.add_middleware(
 
 app.include_router(orgs_router)
 app.include_router(vessels_router)
+app.include_router(inventory_groups_router)
 app.include_router(inventory_requirements_router)
 app.include_router(inventory_checks_router)
 app.include_router(maintenance_router)

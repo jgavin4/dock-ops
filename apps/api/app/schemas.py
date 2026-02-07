@@ -56,7 +56,7 @@ class InventoryRequirementBase(BaseModel):
 
 
 class InventoryRequirementCreate(InventoryRequirementBase):
-    pass
+    parent_group_id: Optional[int] = None
 
 
 class InventoryRequirementUpdate(BaseModel):
@@ -65,9 +65,35 @@ class InventoryRequirementUpdate(BaseModel):
     category: Optional[str] = Field(default=None, max_length=255)
     critical: Optional[bool] = None
     notes: Optional[str] = None
+    parent_group_id: Optional[int] = None
 
 
 class InventoryRequirementOut(InventoryRequirementBase):
+    id: int
+    vessel_id: int
+    parent_group_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# Inventory Group Schemas
+class InventoryGroupBase(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: Optional[str] = None
+
+
+class InventoryGroupCreate(InventoryGroupBase):
+    pass
+
+
+class InventoryGroupUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = None
+
+
+class InventoryGroupOut(InventoryGroupBase):
     id: int
     vessel_id: int
     created_at: datetime

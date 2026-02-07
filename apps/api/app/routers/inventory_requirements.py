@@ -9,6 +9,7 @@ from app.deps import AuthContext
 from app.deps import get_current_auth
 from app.deps import get_db
 from app.models import InventoryCheckLine
+from app.models import InventoryGroup
 from app.models import Vessel
 from app.models import VesselInventoryRequirement
 from app.permissions import can_edit_inventory_requirements
@@ -67,8 +68,25 @@ def create_requirement(
     if not can_edit_inventory_requirements(auth):
         raise HTTPException(status_code=403, detail="Insufficient permissions to edit inventory requirements")
     vessel = verify_vessel_access(vessel_id, db, auth)
+    
+    # Validate parent_group_id if provided
+    if payload.parent_group_id is not None:
+        group = (
+            db.execute(
+                select(InventoryGroup).where(
+                    InventoryGroup.id == payload.parent_group_id,
+                    InventoryGroup.vessel_id == vessel.id,
+                )
+            )
+            .scalars()
+            .one_or_none()
+        )
+        if not group:
+            raise HTTPException(status_code=404, detail="Inventory group not found or does not belong to this vessel")
+    
     requirement = VesselInventoryRequirement(
         vessel_id=vessel.id,
+        parent_group_id=payload.parent_group_id,
         item_name=payload.item_name,
         required_quantity=payload.required_quantity,
         category=payload.category,
@@ -105,6 +123,22 @@ def update_requirement(
         raise HTTPException(status_code=404, detail="Requirement not found")
 
     updates = payload.model_dump(exclude_unset=True)
+    
+    # Validate parent_group_id if being updated
+    if "parent_group_id" in updates and updates["parent_group_id"] is not None:
+        group = (
+            db.execute(
+                select(InventoryGroup).where(
+                    InventoryGroup.id == updates["parent_group_id"],
+                    InventoryGroup.vessel_id == requirement.vessel_id,
+                )
+            )
+            .scalars()
+            .one_or_none()
+        )
+        if not group:
+            raise HTTPException(status_code=404, detail="Inventory group not found or does not belong to this vessel")
+    
     for field, value in updates.items():
         setattr(requirement, field, value)
 

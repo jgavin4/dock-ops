@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useUser, SignInButton, UserButton } from "@clerk/nextjs";
 import { useOrg } from "@/contexts/org-context";
 import { useQuery } from "@tanstack/react-query";
@@ -39,8 +40,15 @@ export function Header() {
     <header className="border-b bg-white">
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between gap-2">
-          <Link href="/" className="text-xl sm:text-2xl font-bold text-primary whitespace-nowrap">
-            dock-ops
+          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <Image
+              src="/assets/logo.png"
+              alt="DockOps Logo"
+              width={120}
+              height={40}
+              className="h-8 w-auto sm:h-10"
+              priority
+            />
           </Link>
           <nav className="flex items-center gap-2 sm:gap-4 flex-1 justify-end min-w-0">
             {isSignedIn ? (
