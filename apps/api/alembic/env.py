@@ -25,6 +25,12 @@ database_url = os.getenv("DATABASE_URL")
 if not database_url:
     raise RuntimeError("DATABASE_URL is not set")
 
+# Normalize DATABASE_URL to use psycopg3 dialect if it's using standard postgresql://
+# Railway and other providers often provide postgresql:// which SQLAlchemy interprets as psycopg2
+# We use psycopg3 (psycopg package), so we need to convert it
+if database_url.startswith("postgresql://") and "+psycopg" not in database_url:
+    database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
 config.set_main_option("sqlalchemy.url", database_url)
 
 target_metadata = Base.metadata
