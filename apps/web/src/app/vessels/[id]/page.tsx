@@ -1523,7 +1523,7 @@ function MaintenanceTab({ vesselId }: { vesselId: number }) {
   });
 
   // Fetch latest log for each task to show last completion date
-  const taskIds = tasks?.map((t) => t.id) || [];
+  const taskIds = React.useMemo(() => tasks?.map((t) => t.id) || [], [tasks]);
   const logQueries = useQueries({
     queries: taskIds.map((taskId) => ({
       queryKey: ["maintenance-logs", taskId],

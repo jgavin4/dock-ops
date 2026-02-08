@@ -327,7 +327,7 @@ export default function SuperAdminPage() {
               <CardTitle>All Users</CardTitle>
               <p className="text-sm text-muted-foreground mt-2">
                 Note: Users are created automatically when they first sign in and make an API call.
-                If a user signed up in Clerk but hasn't logged in yet, they won't appear here.
+                If a user signed up in Clerk but hasn&apos;t logged in yet, they won&apos;t appear here.
               </p>
             </CardHeader>
             <CardContent>
