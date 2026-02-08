@@ -260,7 +260,7 @@ export function useApi() {
         )
       ),
     // Orgs (no orgId needed for these)
-    createOrg: (data: { name: string }) =>
+    createOrg: (data: { name: string; force?: boolean }) =>
       withAuth((token) =>
         api.apiRequest<api.Organization>("/api/orgs", {
           method: "POST",
