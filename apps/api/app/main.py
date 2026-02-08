@@ -9,12 +9,16 @@ from app.routers.maintenance import router as maintenance_router
 from app.routers.orgs import router as orgs_router
 from app.routers.vessels import router as vessels_router
 from app.routers.imports import router as imports_router
+from app.routers.billing import router as billing_router
+from app.routers.webhooks import router as webhooks_router
 
 app = FastAPI(title="dock-ops API")
 
 # CORS middleware
 import os
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+# Split by comma and strip whitespace
+cors_origins = [origin.strip() for origin in cors_origins_raw.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -31,6 +35,8 @@ app.include_router(inventory_checks_router)
 app.include_router(maintenance_router)
 app.include_router(comments_router)
 app.include_router(imports_router)
+app.include_router(billing_router)
+app.include_router(webhooks_router)
 
 @app.get("/health")
 def health():

@@ -13,6 +13,7 @@ Inventory + maintenance management for vessels.
 - Node.js 18+
 - Clerk account (for authentication)
 - Resend account (for email invites, optional)
+- Stripe account (for billing/subscriptions)
 
 ## Local Development
 
@@ -135,6 +136,218 @@ NEXT_PUBLIC_API_BASE_URL=  # Leave empty to use Next.js rewrites (/api/*)
 - **Inventory**: Requirements and checks with quantity tracking
 - **Maintenance**: Tasks and completion logs
 - **Comments**: Vessel comments and notes
+- **Billing**: Stripe subscription management with vessel-limit tiers
+
+## Stripe Setup
+
+### Local Development
+
+1. **Create Stripe Account** (if you don't have one):
+   - Sign up at https://stripe.com
+   - Use test mode for development
+
+2. **Get API Keys**:
+   - Go to Stripe Dashboard > Developers > API keys
+   - Copy your **Secret key** (starts with `sk_test_`)
+   - Add it to `apps/api/.env` as `STRIPE_SECRET_KEY`
+
+3. **Create Products and Prices**:
+   - Go to Stripe Dashboard > Products
+   - Create 4 products with prices:
+     - **Starter**: $29/month (or your price) - 3 vessels
+     - **Standard**: $49/month - 5 vessels
+     - **Pro**: $99/month - 10 vessels
+     - **Unlimited**: $199/month - Unlimited vessels
+   - Copy the **Price IDs** (start with `price_`) and add them to `apps/api/.env`:
+     - `STRIPE_PRICE_STARTER=price_...`
+     - `STRIPE_PRICE_STANDARD=price_...`
+     - `STRIPE_PRICE_PRO=price_...`
+     - `STRIPE_PRICE_UNLIMITED=price_...`
+
+4. **Set Up Webhook Forwarding** (for local testing):
+   ```bash
+   # Install Stripe CLI: https://stripe.com/docs/stripe-cli
+   stripe listen --forward-to http://localhost:8000/api/webhooks/stripe
+   ```
+   - Copy the webhook signing secret (starts with `whsec_`)
+   - Add it to `apps/api/.env` as `STRIPE_WEBHOOK_SECRET`
+
+5. **Test Webhook Events**:
+   ```bash
+   # Trigger test events
+   stripe trigger customer.subscription.created
+   stripe trigger customer.subscription.updated
+   stripe trigger customer.subscription.deleted
+   ```
+
+### Production Deployment (Railway)
+
+1. **Set Environment Variables** on Railway:
+   - `STRIPE_SECRET_KEY` - Use your **live** secret key (starts with `sk_live_`)
+   - `STRIPE_WEBHOOK_SECRET` - Get from Stripe Dashboard > Developers > Webhooks
+   - `WEB_BASE_URL=https://dock-ops.com` (or your domain)
+   - `STRIPE_PRICE_STARTER` - Use **live** price IDs
+   - `STRIPE_PRICE_STANDARD` - Use **live** price IDs
+   - `STRIPE_PRICE_PRO` - Use **live** price IDs
+   - `STRIPE_PRICE_UNLIMITED` - Use **live** price IDs
+
+2. **Configure Stripe Webhook**:
+   - Go to Stripe Dashboard > Developers > Webhooks
+   - Add endpoint: `https://api.dock-ops.com/api/webhooks/stripe`
+   - Select events to listen for:
+     - `customer.subscription.created`
+     - `customer.subscription.updated`
+     - `customer.subscription.deleted`
+     - `checkout.session.completed` (optional)
+   - Copy the webhook signing secret and add to Railway env vars
+
+3. **Verify Webhook**:
+   - Stripe will send a test event when you create the webhook
+   - Check your API logs to ensure it's received and processed
+
+## Production Deployment
+
+### Backend (Railway)
+
+1. **Create Railway Account**:
+   - Sign up at https://railway.app
+   - Create a new project
+
+2. **Add PostgreSQL Database**:
+   - Click "New" → "Database" → "Add PostgreSQL"
+   - Railway will automatically set `DATABASE_URL` environment variable
+
+3. **Deploy API Service**:
+   - Click "New" → "GitHub Repo" → Select your `dock-ops` repository
+   - Select the `apps/api` directory as the root directory
+   - Railway will detect the Dockerfile and build automatically
+
+4. **Set Environment Variables**:
+   Go to your API service → Variables tab and add:
+   
+   ```bash
+   # Database (auto-set by Railway Postgres, but verify)
+   DATABASE_URL=<provided by Railway Postgres>
+   
+   # CORS (required)
+   CORS_ORIGINS=https://dock-ops.com,https://www.dock-ops.com,http://localhost:3000
+   
+   # Auth (required)
+   CLERK_SECRET_KEY=sk_live_...  # Use live key for production
+   CLERK_JWKS_URL=https://your-clerk-instance.clerk.accounts.dev/.well-known/jwks.json
+   
+   # Email (optional)
+   RESEND_API_KEY=re_...
+   FROM_EMAIL=noreply@dock-ops.com
+   
+   # Frontend URLs
+   FRONTEND_URL=https://dock-ops.com
+   WEB_BASE_URL=https://dock-ops.com
+   
+   # Stripe (required for billing)
+   STRIPE_SECRET_KEY=sk_live_...  # Use live key for production
+   STRIPE_WEBHOOK_SECRET=whsec_...  # From Stripe Dashboard > Webhooks
+   
+   # Stripe Price IDs (use live price IDs)
+   STRIPE_PRICE_STARTER=price_...
+   STRIPE_PRICE_STANDARD=price_...
+   STRIPE_PRICE_PRO=price_...
+   STRIPE_PRICE_UNLIMITED=price_...
+   ```
+
+5. **Configure Custom Domain**:
+   - Go to your API service → Settings → Networking
+   - Add custom domain: `api.dock-ops.com`
+   - Railway will provide DNS records (CNAME)
+   - Update your DNS provider (Squarespace) with the CNAME record
+
+6. **Verify Deployment**:
+   - Check logs: Railway → Deployments → View logs
+   - Test health endpoint: `https://api.dock-ops.com/health`
+   - Verify migrations ran: Check logs for "Running upgrade head"
+
+### Frontend (Vercel)
+
+1. **Create Vercel Account**:
+   - Sign up at https://vercel.com
+   - Import your GitHub repository
+
+2. **Configure Project**:
+   - Root Directory: `apps/web`
+   - Framework Preset: Next.js
+   - Build Command: `npm run build` (default)
+   - Output Directory: `.next` (default)
+
+3. **Set Environment Variables**:
+   Go to Project Settings → Environment Variables:
+   
+   ```bash
+   # Clerk (required)
+   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...  # Use live key for production
+   CLERK_SECRET_KEY=sk_live_...  # Use live key for production
+   
+   # API Base URL (required)
+   NEXT_PUBLIC_API_BASE_URL=https://api.dock-ops.com
+   ```
+
+4. **Configure Custom Domain**:
+   - Go to Project Settings → Domains
+   - Add domains: `dock-ops.com` and `www.dock-ops.com`
+   - Vercel will provide DNS records
+   - Update your DNS provider (Squarespace) with:
+     - `dock-ops.com` → A record (or CNAME) pointing to Vercel
+     - `www.dock-ops.com` → CNAME pointing to Vercel
+
+5. **Deploy**:
+   - Push to main branch (auto-deploys)
+   - Or manually deploy from Vercel dashboard
+
+### DNS Configuration (Squarespace)
+
+If your domain is managed by Squarespace, you'll need to add DNS records:
+
+1. **For API (api.dock-ops.com)**:
+   - Type: CNAME
+   - Host: `api`
+   - Points to: `<railway-provided-domain>` (e.g., `api-production.up.railway.app`)
+
+2. **For Web (dock-ops.com and www.dock-ops.com)**:
+   - Follow Vercel's DNS instructions
+   - Usually involves A records or CNAME records pointing to Vercel
+
+**Note**: DNS changes can take up to 48 hours to propagate, but usually happen within minutes.
+
+### Post-Deployment Checklist
+
+- [ ] API health check: `https://api.dock-ops.com/health` returns `{"status": "ok"}`
+- [ ] Web app loads: `https://dock-ops.com` shows the app
+- [ ] Web app calls API: Check browser console for successful API calls
+- [ ] Stripe webhook configured: `https://api.dock-ops.com/api/webhooks/stripe`
+- [ ] Stripe checkout flow works: Test subscription purchase
+- [ ] Billing enforcement works: Verify vessel limits are enforced
+- [ ] CORS configured: No CORS errors in browser console
+
+### Troubleshooting
+
+**API not connecting to database**:
+- Verify `DATABASE_URL` is set correctly in Railway
+- Check Railway Postgres service is running
+- Review API logs for connection errors
+
+**CORS errors**:
+- Verify `CORS_ORIGINS` includes your production domains
+- Check that domains match exactly (including `www.` variant)
+- Ensure no trailing slashes in CORS_ORIGINS
+
+**Web app can't reach API**:
+- Verify `NEXT_PUBLIC_API_BASE_URL` is set in Vercel
+- Check API is accessible: `curl https://api.dock-ops.com/health`
+- Review browser console for network errors
+
+**Migrations not running**:
+- Check Railway deployment logs for `alembic upgrade head`
+- Verify `entrypoint.sh` is executable and copied correctly
+- Manually run migrations if needed: Railway → API service → Connect → `alembic upgrade head`
 
 ## API Endpoints
 
@@ -152,6 +365,15 @@ All endpoints (except `/health` and `/api/orgs/invites/accept`) require:
 - `POST /api/orgs/invites/accept` - Accept invite
 - `POST /api/orgs/{org_id}/members/{user_id}/role` - Update role (ADMIN only)
 - `POST /api/orgs/{org_id}/members/{user_id}/disable` - Disable member (ADMIN only)
+- `GET /api/orgs/{org_id}/billing` - Get billing info (ADMIN only, read-only)
+
+### Billing Endpoints (ADMIN only)
+- `GET /api/billing/status` - Get current billing status
+- `POST /api/billing/checkout-session?plan={plan}` - Create Stripe checkout session
+- `POST /api/billing/portal` - Create Stripe billing portal session
+
+### Webhook Endpoints
+- `POST /api/webhooks/stripe` - Stripe webhook handler (no auth required, uses signature verification)
 
 ## Role Permissions
 

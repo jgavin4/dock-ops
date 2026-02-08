@@ -53,6 +53,18 @@ class Organization(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
+    # Billing override fields
+    billing_override_enabled: Mapped[bool] = mapped_column(default=False, server_default="false")
+    billing_override_vessel_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    billing_override_expires_at: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    billing_override_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Stripe subscription fields
+    stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    stripe_subscription_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    subscription_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # active/trialing/past_due/canceled/etc
+    subscription_plan: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # starter/standard/pro/unlimited
+    vessel_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # null = unlimited
+    current_period_end: Mapped[Optional[DateTime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

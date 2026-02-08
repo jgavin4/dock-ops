@@ -258,6 +258,10 @@ class OrganizationCreate(OrganizationBase):
 class OrganizationOut(OrganizationBase):
     id: int
     is_active: bool
+    billing_override_enabled: bool = False
+    billing_override_vessel_limit: Optional[int] = None
+    billing_override_expires_at: Optional[datetime] = None
+    billing_override_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -364,3 +368,11 @@ class MeOut(BaseModel):
     memberships: list[OrgMembershipSummary]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Billing Override Schemas
+class BillingOverrideUpdate(BaseModel):
+    billing_override_enabled: Optional[bool] = None
+    billing_override_vessel_limit: Optional[int] = None
+    billing_override_expires_at: Optional[datetime] = None
+    billing_override_reason: Optional[str] = None

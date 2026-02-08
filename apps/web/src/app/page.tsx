@@ -237,6 +237,12 @@ export default function DashboardPage() {
     enabled: !!orgId && isSignedIn === true,
   });
 
+  const { data: billing } = useQuery({
+    queryKey: ["billing-status"],
+    queryFn: () => api.getBillingStatus(),
+    enabled: !!orgId && isSignedIn === true,
+  });
+
   const createVesselMutation = useMutation({
     mutationFn: (data: any) => api.createVessel(data),
     onSuccess: () => {
@@ -370,7 +376,15 @@ export default function DashboardPage() {
             <p className="text-lg text-muted-foreground mb-4">
               No vessels yet
             </p>
-            <Button onClick={() => setAddVesselOpen(true)}>
+            <Button
+              onClick={() => setAddVesselOpen(true)}
+              disabled={!canAddVessel}
+              title={
+                !canAddVessel
+                  ? "Vessel limit reached. Upgrade your plan to add more vessels."
+                  : ""
+              }
+            >
               Add your first vessel
             </Button>
           </CardContent>

@@ -389,5 +389,81 @@ export function useApi() {
           token
         )
       ),
+    // Internal super admin endpoints
+    searchOrgs: (query?: string) =>
+      withAuth((token) =>
+        api.apiRequest<api.Organization[]>(
+          `/api/internal/orgs${query ? `?query=${encodeURIComponent(query)}` : ""}`,
+          {},
+          null,
+          token
+        )
+      ),
+    updateBillingOverride: (orgId: number, data: {
+      billing_override_enabled?: boolean;
+      billing_override_vessel_limit?: number | null;
+      billing_override_expires_at?: string | null;
+      billing_override_reason?: string | null;
+    }) =>
+      withAuth((token) =>
+        api.apiRequest<api.Organization>(
+          `/api/internal/orgs/${orgId}/billing-override`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(data),
+          },
+          null,
+          token
+        )
+      ),
+    // Org admin billing endpoint
+    getOrgBilling: (orgId: number) =>
+      withAuth((token, currentOrgId) =>
+        api.apiRequest<{
+          org_id: number;
+          org_name: string;
+          subscription_plan: string | null;
+          subscription_status: string | null;
+          vessel_usage: { current: number; limit: number | null };
+          billing_override: { active: boolean; expires_at: string | null };
+          effective_entitlement: { is_active: boolean; vessel_limit: number | null };
+        }>(`/api/orgs/${orgId}/billing`, {}, currentOrgId, token)
+      ),
+    // Billing endpoints
+    getBillingStatus: () =>
+      withAuth((token, orgId) =>
+        api.apiRequest<{
+          org_id: number;
+          org_name: string;
+          plan: string | null;
+          status: string | null;
+          vessel_limit: number | null;
+          current_period_end: string | null;
+          vessel_usage: { current: number; limit: number | null };
+          billing_override: { active: boolean; expires_at: string | null };
+        }>("/api/billing/status", {}, orgId, token)
+      ),
+    createCheckoutSession: (plan: string) =>
+      withAuth((token, orgId) =>
+        api.apiRequest<{ url: string }>(
+          `/api/billing/checkout-session?plan=${encodeURIComponent(plan)}`,
+          {
+            method: "POST",
+          },
+          orgId,
+          token
+        )
+      ),
+    createPortalSession: () =>
+      withAuth((token, orgId) =>
+        api.apiRequest<{ url: string }>(
+          "/api/billing/portal",
+          {
+            method: "POST",
+          },
+          orgId,
+          token
+        )
+      ),
   };
 }

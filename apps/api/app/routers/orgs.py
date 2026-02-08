@@ -4,8 +4,8 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Path
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Header, Path, Query
+from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 
 from app.deps import get_db, get_current_user, get_current_auth, require_role, require_super_admin, AuthContext
@@ -18,7 +18,8 @@ from app.schemas import (
     OrgMembershipOut, OrgMembershipWithUserOut,
     OrgInviteCreate, OrgInviteOut, OrgInviteAccept,
     MemberRoleUpdate, MeOut, UserOut, OrgMembershipSummary,
-    OrganizationRequestCreate, OrganizationRequestOut, OrganizationRequestReview
+    OrganizationRequestCreate, OrganizationRequestOut, OrganizationRequestReview,
+    BillingOverrideUpdate
 )
 
 router = APIRouter(tags=["organizations"])
@@ -762,3 +763,162 @@ def review_org_request_super_admin(
     request.requested_by_name = requested_by.name
     
     return request
+
+
+@router.get("/api/orgs/{org_id}/billing")
+def get_org_billing(
+    org_id: int = Path(ge=1),
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(require_role([OrgRole.ADMIN])),
+) -> dict:
+    """Get billing information for an organization (ADMIN only, read-only)."""
+    if auth.org_id != org_id:
+        raise HTTPException(status_code=403, detail="Cannot access other organization")
+    
+    org = (
+        db.execute(select(Organization).where(Organization.id == org_id))
+        .scalars()
+        .one_or_none()
+    )
+    
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    # Get vessel count
+    from app.models import Vessel
+    from sqlalchemy import func
+    vessel_count = db.execute(
+        select(func.count(Vessel.id)).where(Vessel.org_id == org_id)
+    ).scalar()
+    
+    # Get effective entitlement
+    from app.billing import get_effective_entitlement
+    entitlement = get_effective_entitlement(org)
+    
+    # Determine if override is active
+    override_active = False
+    override_expires_at = None
+    if org.billing_override_enabled:
+        now = datetime.now(timezone.utc)
+        if org.billing_override_expires_at is None or org.billing_override_expires_at > now:
+            override_active = True
+            override_expires_at = org.billing_override_expires_at
+    
+    return {
+        "org_id": org.id,
+        "org_name": org.name,
+        "subscription_plan": None,  # Placeholder for future Stripe integration
+        "subscription_status": None,  # Placeholder for future Stripe integration
+        "vessel_usage": {
+            "current": vessel_count,
+            "limit": entitlement.vessel_limit
+        },
+        "billing_override": {
+            "active": override_active,
+            "expires_at": override_expires_at.isoformat() if override_expires_at else None
+        },
+        "effective_entitlement": {
+            "is_active": entitlement.is_active,
+            "vessel_limit": entitlement.vessel_limit
+        }
+    }
+
+
+# Internal Super Admin Endpoints
+@router.get("/api/internal/orgs")
+def search_orgs(
+    query: Optional[str] = Query(None, description="Search by organization name or member email"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+) -> list[dict]:
+    """Search organizations by name or member email (Super Admin only)."""
+    from app.models import Vessel
+    from sqlalchemy import func
+    
+    if not query:
+        # Return all orgs if no query
+        orgs = db.execute(select(Organization).order_by(Organization.created_at.desc())).scalars().all()
+    else:
+        query_lower = query.lower()
+        
+        # Search by org name
+        orgs_by_name = (
+            db.execute(
+                select(Organization)
+                .where(Organization.name.ilike(f"%{query_lower}%"))
+                .order_by(Organization.created_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        
+        # Search by member email
+        orgs_by_email = (
+            db.execute(
+                select(Organization)
+                .join(OrgMembership, Organization.id == OrgMembership.org_id)
+                .join(User, OrgMembership.user_id == User.id)
+                .where(User.email.ilike(f"%{query_lower}%"))
+                .distinct()
+                .order_by(Organization.created_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        
+        # Combine and deduplicate
+        org_dict = {org.id: org for org in orgs_by_name}
+        for org in orgs_by_email:
+            org_dict[org.id] = org
+        
+        orgs = list(org_dict.values())
+    
+    # Add vessel count for each org
+    result = []
+    for org in orgs:
+        vessel_count = db.execute(
+            select(func.count(Vessel.id)).where(Vessel.org_id == org.id)
+        ).scalar()
+        
+        org_dict = {
+            "id": org.id,
+            "name": org.name,
+            "is_active": org.is_active,
+            "billing_override_enabled": org.billing_override_enabled,
+            "billing_override_vessel_limit": org.billing_override_vessel_limit,
+            "billing_override_expires_at": org.billing_override_expires_at.isoformat() if org.billing_override_expires_at else None,
+            "billing_override_reason": org.billing_override_reason,
+            "created_at": org.created_at.isoformat(),
+            "updated_at": org.updated_at.isoformat(),
+            "vessel_count": vessel_count,
+        }
+        result.append(org_dict)
+    
+    return result
+
+
+@router.patch("/api/internal/orgs/{org_id}/billing-override", response_model=OrganizationOut)
+def update_billing_override(
+    payload: BillingOverrideUpdate,
+    org_id: int = Path(ge=1),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_super_admin),
+) -> Organization:
+    """Update billing override for an organization (Super Admin only)."""
+    org = (
+        db.execute(select(Organization).where(Organization.id == org_id))
+        .scalars()
+        .one_or_none()
+    )
+    
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    # Update fields if provided
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(org, field, value)
+    
+    db.commit()
+    db.refresh(org)
+    return org
