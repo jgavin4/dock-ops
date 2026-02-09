@@ -81,6 +81,16 @@ function OverviewTab({ vessel }: { vessel: any }) {
     setIsEditing(false);
   };
 
+  // Helper function to safely format dates
+  const formatDate = (dateString: string | null | undefined): string => {
+    if (!dateString) return "N/A";
+    try {
+      return format(new Date(dateString), "PPp");
+    } catch {
+      return dateString;
+    }
+  };
+
   const makeModelYear = [vessel.make, vessel.model, vessel.year?.toString()]
     .filter(Boolean)
     .join(" ");
@@ -165,7 +175,7 @@ function OverviewTab({ vessel }: { vessel: any }) {
               Created
             </label>
             <p className="text-base mt-1">
-              {format(new Date(vessel.created_at), "PPp")}
+              {formatDate(vessel.created_at)}
             </p>
           </div>
           <div>
@@ -173,7 +183,7 @@ function OverviewTab({ vessel }: { vessel: any }) {
               Last Updated
             </label>
             <p className="text-base mt-1">
-              {format(new Date(vessel.updated_at), "PPp")}
+              {formatDate(vessel.updated_at)}
             </p>
           </div>
           {isEditing && (

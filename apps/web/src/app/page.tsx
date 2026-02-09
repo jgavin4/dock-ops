@@ -3,7 +3,7 @@
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { useApi } from "@/hooks/use-api";
 import { useOrg } from "@/contexts/org-context";
@@ -243,6 +243,15 @@ export default function DashboardPage() {
     enabled: !!orgId && isSignedIn === true,
   });
 
+  // Calculate if user can add more vessels based on billing limits
+  const canAddVessel = useMemo(() => {
+    if (!billing) return true; // Allow if billing data not loaded yet
+    // Unlimited if vessel_limit is null
+    if (billing.vessel_limit === null) return true;
+    // Can add if current usage is less than limit
+    return billing.vessel_usage.current < billing.vessel_limit;
+  }, [billing]);
+
   const createVesselMutation = useMutation({
     mutationFn: (data: any) => api.createVessel(data),
     onSuccess: () => {
@@ -360,7 +369,17 @@ export default function DashboardPage() {
           <Button variant="outline" onClick={() => setImportVesselOpen(true)}>
             Import
           </Button>
-          <Button onClick={() => setAddVesselOpen(true)}>Add Vessel</Button>
+          <Button 
+            onClick={() => setAddVesselOpen(true)}
+            disabled={!canAddVessel}
+            title={
+              !canAddVessel
+                ? "Vessel limit reached. Upgrade your plan to add more vessels."
+                : ""
+            }
+          >
+            Add Vessel
+          </Button>
         </div>
       </div>
 

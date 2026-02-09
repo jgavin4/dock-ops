@@ -19,6 +19,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { format } from "date-fns";
 
 export default function SuperAdminPage() {
@@ -35,6 +37,12 @@ export default function SuperAdminPage() {
   const [reviewAction, setReviewAction] = useState<"APPROVED" | "REJECTED">("APPROVED");
   const [duplicateConfirmOpen, setDuplicateConfirmOpen] = useState(false);
   const [pendingOrgName, setPendingOrgName] = useState("");
+  const [billingModalOpen, setBillingModalOpen] = useState(false);
+  const [selectedOrgForBilling, setSelectedOrgForBilling] = useState<any>(null);
+  const [overrideEnabled, setOverrideEnabled] = useState(false);
+  const [vesselLimit, setVesselLimit] = useState<string>("");
+  const [expiresAt, setExpiresAt] = useState<string>("");
+  const [reason, setReason] = useState("");
 
   const { data: me, isLoading: meLoading, error: meError } = useQuery({
     queryKey: ["me"],
@@ -120,6 +128,28 @@ export default function SuperAdminPage() {
     },
     onError: (error: Error) => {
       toast.error(error.message || "Failed to review request");
+    },
+  });
+
+  const updateBillingMutation = useMutation({
+    mutationFn: (data: {
+      orgId: number;
+      billing_override_enabled?: boolean;
+      billing_override_vessel_limit?: number | null;
+      billing_override_expires_at?: string | null;
+      billing_override_reason?: string | null;
+    }) => {
+      const { orgId, ...updateData } = data;
+      return api.updateBillingOverride(orgId, updateData);
+    },
+    onSuccess: () => {
+      toast.success("Billing override updated successfully");
+      setBillingModalOpen(false);
+      setSelectedOrgForBilling(null);
+      queryClient.invalidateQueries({ queryKey: ["all-orgs"] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to update billing override");
     },
   });
 
@@ -213,36 +243,86 @@ export default function SuperAdminPage() {
                       <tr className="border-b">
                         <th className="text-left p-2">ID</th>
                         <th className="text-left p-2">Name</th>
+                        <th className="text-left p-2">Vessels</th>
+                        <th className="text-left p-2">Billing</th>
                         <th className="text-left p-2">Status</th>
                         <th className="text-left p-2">Created</th>
                         <th className="text-left p-2">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {orgs.map((org) => (
-                        <tr key={org.id} className="border-b">
-                          <td className="p-2">{org.id}</td>
-                          <td className="p-2 font-medium">{org.name}</td>
-                          <td className="p-2">
-                            <Badge variant={org.is_active ? "default" : "destructive"}>
-                              {org.is_active ? "Active" : "Disabled"}
-                            </Badge>
-                          </td>
-                          <td className="p-2 text-sm text-muted-foreground">
-                            {format(new Date(org.created_at), "PPp")}
-                          </td>
-                          <td className="p-2">
-                            <Button
-                              variant={org.is_active ? "destructive" : "default"}
-                              size="sm"
-                              onClick={() => toggleStatusMutation.mutate(org.id)}
-                              disabled={toggleStatusMutation.isPending}
-                            >
-                              {org.is_active ? "Disable" : "Enable"}
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
+                      {orgs.map((org: any) => {
+                        const overrideActive =
+                          org.billing_override_enabled &&
+                          (!org.billing_override_expires_at ||
+                            new Date(org.billing_override_expires_at) > new Date());
+                        const effectiveLimit = overrideActive
+                          ? org.billing_override_vessel_limit === null
+                            ? "Unlimited"
+                            : org.billing_override_vessel_limit
+                          : org.subscription_plan
+                          ? org.vessel_limit === null
+                            ? "Unlimited"
+                            : org.vessel_limit
+                          : "None";
+
+                        return (
+                          <tr key={org.id} className="border-b">
+                            <td className="p-2">{org.id}</td>
+                            <td className="p-2 font-medium">{org.name}</td>
+                            <td className="p-2">
+                              {org.vessel_count ?? 0} / {effectiveLimit}
+                            </td>
+                            <td className="p-2">
+                              {overrideActive ? (
+                                <Badge variant="default">Override</Badge>
+                              ) : org.subscription_plan ? (
+                                <Badge variant="secondary">{org.subscription_plan}</Badge>
+                              ) : (
+                                <Badge variant="outline">Free</Badge>
+                              )}
+                            </td>
+                            <td className="p-2">
+                              <Badge variant={org.is_active ? "default" : "destructive"}>
+                                {org.is_active ? "Active" : "Disabled"}
+                              </Badge>
+                            </td>
+                            <td className="p-2 text-sm text-muted-foreground">
+                              {format(new Date(org.created_at), "PPp")}
+                            </td>
+                            <td className="p-2">
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedOrgForBilling(org);
+                                    setOverrideEnabled(org.billing_override_enabled || false);
+                                    setVesselLimit(org.billing_override_vessel_limit?.toString() || "");
+                                    setExpiresAt(
+                                      org.billing_override_expires_at
+                                        ? format(new Date(org.billing_override_expires_at), "yyyy-MM-dd'T'HH:mm")
+                                        : ""
+                                    );
+                                    setReason(org.billing_override_reason || "");
+                                    setBillingModalOpen(true);
+                                  }}
+                                >
+                                  Billing
+                                </Button>
+                                <Button
+                                  variant={org.is_active ? "destructive" : "default"}
+                                  size="sm"
+                                  onClick={() => toggleStatusMutation.mutate(org.id)}
+                                  disabled={toggleStatusMutation.isPending}
+                                >
+                                  {org.is_active ? "Disable" : "Enable"}
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -533,6 +613,115 @@ export default function SuperAdminPage() {
               disabled={createOrgMutation.isPending}
             >
               {createOrgMutation.isPending ? "Creating..." : "Create Anyway"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Billing Override Dialog */}
+      <Dialog open={billingModalOpen} onOpenChange={setBillingModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              Edit Billing Override - {selectedOrgForBilling?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="override-enabled">Enable Billing Override</Label>
+              <Switch
+                id="override-enabled"
+                checked={overrideEnabled}
+                onCheckedChange={setOverrideEnabled}
+              />
+            </div>
+
+            {overrideEnabled && (
+              <>
+                <div>
+                  <Label htmlFor="vessel-limit">Vessel Limit</Label>
+                  <Input
+                    id="vessel-limit"
+                    type="number"
+                    placeholder="Leave empty for unlimited"
+                    value={vesselLimit}
+                    onChange={(e) => setVesselLimit(e.target.value)}
+                    className="mt-1"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Leave empty for unlimited vessels. This will override Stripe subscription limits.
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="expires-at">Expires At</Label>
+                  <Input
+                    id="expires-at"
+                    type="datetime-local"
+                    value={expiresAt}
+                    onChange={(e) => setExpiresAt(e.target.value)}
+                    className="mt-1"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Leave empty for no expiration
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="reason">Reason</Label>
+                  <Textarea
+                    id="reason"
+                    placeholder="Reason for billing override..."
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    className="mt-1"
+                    rows={3}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setBillingModalOpen(false);
+                setSelectedOrgForBilling(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!selectedOrgForBilling) return;
+
+                const updateData: any = {
+                  billing_override_enabled: overrideEnabled,
+                };
+
+                if (overrideEnabled) {
+                  if (vesselLimit) {
+                    updateData.billing_override_vessel_limit = parseInt(vesselLimit) || null;
+                  } else {
+                    updateData.billing_override_vessel_limit = null; // Unlimited
+                  }
+                  updateData.billing_override_expires_at = expiresAt || null;
+                  updateData.billing_override_reason = reason || null;
+                } else {
+                  // When disabling, clear all override fields
+                  updateData.billing_override_vessel_limit = null;
+                  updateData.billing_override_expires_at = null;
+                  updateData.billing_override_reason = null;
+                }
+
+                updateBillingMutation.mutate({
+                  orgId: selectedOrgForBilling.id,
+                  ...updateData,
+                });
+              }}
+              disabled={updateBillingMutation.isPending}
+            >
+              {updateBillingMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>

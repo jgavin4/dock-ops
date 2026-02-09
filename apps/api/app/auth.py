@@ -20,22 +20,39 @@ CLERK_SECRET_KEY = os.getenv("CLERK_SECRET_KEY", "")
 _jwks_cache = None
 
 
-def get_clerk_jwks():
+def get_clerk_jwks(jwks_url: Optional[str] = None):
     """Fetch Clerk JWKS (JSON Web Key Set) for JWT verification."""
     global _jwks_cache
-    if _jwks_cache:
-        return _jwks_cache
+    url = jwks_url or CLERK_JWKS_URL
     
-    if not CLERK_JWKS_URL:
+    if not url:
         # Development mode - skip verification if not configured
         return None
     
-    try:
-        response = httpx.get(CLERK_JWKS_URL, timeout=5.0)
-        response.raise_for_status()
-        _jwks_cache = response.json()
+    # Use cache if we're fetching the same URL
+    if _jwks_cache and not jwks_url:
         return _jwks_cache
-    except Exception:
+    
+    try:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Fetching JWKS from: {url}")
+        response = httpx.get(url, timeout=10.0)
+        response.raise_for_status()
+        jwks = response.json()
+        if not jwks_url:  # Only cache if it's the configured URL
+            _jwks_cache = jwks
+        logger.info(f"Successfully fetched JWKS with {len(jwks.get('keys', []))} keys")
+        return jwks
+    except httpx.HTTPError as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"HTTP error fetching JWKS from {url}: {str(e)}")
+        return None
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error fetching JWKS from {url}: {str(e)}")
         return None
 
 
@@ -57,51 +74,56 @@ def verify_clerk_token(token: str) -> Optional[dict]:
         issuer = unverified.get("iss", "")
         logger.info(f"Token issuer: {issuer}")
         
-        # If we have JWKS URL, use it
-        if CLERK_JWKS_URL:
+        # If we have JWKS URL, use it (but skip if it's the placeholder)
+        jwks = None
+        if CLERK_JWKS_URL and "your-clerk-instance" not in CLERK_JWKS_URL:
             logger.info(f"Using configured JWKS URL: {CLERK_JWKS_URL}")
             jwks = get_clerk_jwks()
-            if not jwks:
-                raise HTTPException(status_code=401, detail="Unable to fetch JWKS")
-            
-            # Get kid from token header, not payload
-            try:
-                header_data = token.split('.')[0]
-                # Add padding if needed
-                header_data += '=' * (4 - len(header_data) % 4)
-                header = json.loads(base64.urlsafe_b64decode(header_data))
-                kid = header.get("kid")
-                logger.info(f"Token header kid: {kid}")
-            except Exception as e:
-                logger.warning(f"Could not decode token header: {str(e)}")
-                kid = None
-            
-            key = None
-            if kid:
-                for jwk in jwks.get("keys", []):
-                    if jwk.get("kid") == kid:
-                        key = jwt.algorithms.RSAAlgorithm.from_jwk(jwk)
-                        logger.info(f"Found matching key for kid: {kid}")
-                        break
-            
-            # If no kid or no matching key, try the first key (some tokens don't have kid)
-            if not key and jwks.get("keys"):
-                logger.info("No kid match found, trying first key in JWKS")
-                key = jwt.algorithms.RSAAlgorithm.from_jwk(jwks.get("keys")[0])
-            
-            if not key:
-                raise HTTPException(status_code=401, detail="Invalid token key")
-            
-            payload = jwt.decode(
-                token,
-                key,
-                algorithms=["RS256"],
-                options={"verify_signature": True}
-            )
-            return payload
+            if jwks:
+                # Successfully fetched from configured URL - verify token
+                # Get kid from token header, not payload
+                try:
+                    header_data = token.split('.')[0]
+                    # Add padding if needed
+                    header_data += '=' * (4 - len(header_data) % 4)
+                    header = json.loads(base64.urlsafe_b64decode(header_data))
+                    kid = header.get("kid")
+                    logger.info(f"Token header kid: {kid}")
+                except Exception as e:
+                    logger.warning(f"Could not decode token header: {str(e)}")
+                    kid = None
+                
+                key = None
+                if kid:
+                    for jwk in jwks.get("keys", []):
+                        if jwk.get("kid") == kid:
+                            key = jwt.algorithms.RSAAlgorithm.from_jwk(jwk)
+                            logger.info(f"Found matching key for kid: {kid}")
+                            break
+                
+                # If no kid or no matching key, try the first key (some tokens don't have kid)
+                if not key and jwks.get("keys"):
+                    logger.info("No kid match found, trying first key in JWKS")
+                    key = jwt.algorithms.RSAAlgorithm.from_jwk(jwks.get("keys")[0])
+                
+                if not key:
+                    logger.warning("No valid key found in JWKS, will try auto-detection")
+                else:
+                    payload = jwt.decode(
+                        token,
+                        key,
+                        algorithms=["RS256"],
+                        options={"verify_signature": True}
+                    )
+                    logger.info("Token verified successfully with configured JWKS")
+                    return payload
         
-        # If no JWKS URL but we have a Clerk instance, try to construct it
+        # If no valid JWKS URL but we have a Clerk instance, try to construct it
         # Clerk JWKS URLs follow pattern: https://<instance>.clerk.accounts.dev/.well-known/jwks.json
+        # This auto-detection runs if:
+        # 1. No JWKS URL configured, OR
+        # 2. JWKS URL is placeholder, OR  
+        # 3. JWKS URL failed to fetch
         if issuer and "clerk.accounts.dev" in issuer:
             # Extract instance from issuer (e.g., "https://valid-starfish-96.clerk.accounts.dev")
             jwks_url = f"{issuer}/.well-known/jwks.json"

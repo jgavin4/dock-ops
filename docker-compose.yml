@@ -31,6 +31,7 @@ services:
       DATABASE_URL: postgresql+psycopg://dock_ops:dock_ops@db:5432/dock_ops
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
       CLERK_JWKS_URL: ${CLERK_JWKS_URL:-}
+      # Note: If CLERK_JWKS_URL is not set, the API will auto-detect it from the token issuer
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       FROM_EMAIL: ${FROM_EMAIL:-noreply@dock-ops.com}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}

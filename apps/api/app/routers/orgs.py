@@ -621,14 +621,41 @@ def disable_member(
 
 
 # Super Admin Endpoints
-@router.get("/api/admin/orgs", response_model=list[OrganizationOut])
+@router.get("/api/admin/orgs")
 def list_all_orgs(
     db: Session = Depends(get_db),
     user: User = Depends(require_super_admin),
-) -> list[Organization]:
-    """List all organizations (Super Admin only)."""
+) -> list[dict]:
+    """List all organizations with vessel counts and subscription info (Super Admin only)."""
+    from app.models import Vessel
+    from sqlalchemy import func
+    
     orgs = db.execute(select(Organization).order_by(Organization.created_at.desc())).scalars().all()
-    return orgs
+    
+    result = []
+    for org in orgs:
+        vessel_count = db.execute(
+            select(func.count(Vessel.id)).where(Vessel.org_id == org.id)
+        ).scalar()
+        
+        org_dict = {
+            "id": org.id,
+            "name": org.name,
+            "is_active": org.is_active,
+            "billing_override_enabled": org.billing_override_enabled,
+            "billing_override_vessel_limit": org.billing_override_vessel_limit,
+            "billing_override_expires_at": org.billing_override_expires_at.isoformat() if org.billing_override_expires_at else None,
+            "billing_override_reason": org.billing_override_reason,
+            "subscription_plan": org.subscription_plan,
+            "subscription_status": org.subscription_status,
+            "vessel_limit": org.vessel_limit,
+            "created_at": org.created_at.isoformat(),
+            "updated_at": org.updated_at.isoformat(),
+            "vessel_count": vessel_count,
+        }
+        result.append(org_dict)
+    
+    return result
 
 
 @router.post("/api/admin/orgs/{org_id}/toggle-status", response_model=OrganizationOut)
