@@ -310,7 +310,7 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
     }: {
       id: number;
       payload: InventoryRequirementUpdate;
-    }) => updateInventoryRequirement(id, payload),
+    }) => api.updateInventoryRequirement(id, payload),
     onSuccess: () => {
       toast.success("Requirement updated successfully");
       queryClient.invalidateQueries({
@@ -349,7 +349,7 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
     }
     
     // Create new check
-    const newCheck = await createInventoryCheck(vesselId, {});
+    const newCheck = await api.createInventoryCheck(vesselId, {});
     setInProgressCheckId(newCheck.id);
     queryClient.invalidateQueries({ queryKey: ["inventory-checks", vesselId] });
     return newCheck.id;
@@ -364,7 +364,7 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
       quantity: number;
     }) => {
       const checkId = await getOrCreateInProgressCheck();
-      const currentCheck = await getInventoryCheck(checkId);
+      const currentCheck = await api.getInventoryCheck(checkId);
       
       // Update or add line for this requirement
       const existingLines = currentCheck.lines || [];
@@ -1593,7 +1593,7 @@ function MaintenanceTab({ vesselId }: { vesselId: number }) {
 
   const updateTaskMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: any }) =>
-      updateMaintenanceTask(id, payload),
+      api.updateMaintenanceTask(id, payload),
     onSuccess: () => {
       toast.success("Task updated successfully");
       queryClient.invalidateQueries({
