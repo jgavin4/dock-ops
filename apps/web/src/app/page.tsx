@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ContactForm } from "@/components/contact-form";
+import { ContactForm } from "../components/contact-form";
 import { ViewBillingCta } from "@/components/view-billing-cta";
 
 const FEATURES = [
@@ -158,10 +158,10 @@ export default function MarketingPage() {
           <div className="max-w-2xl mx-auto space-y-6">
             <div className="flex flex-wrap gap-4 justify-center text-sm">
               <div className="rounded-lg border bg-card px-4 py-3">
-                <span className="font-medium">Base:</span> $19/mo (3 vessels)
+                <span className="font-medium">Base:</span> $20/mo (3 vessels)
               </div>
               <div className="rounded-lg border bg-card px-4 py-3">
-                <span className="font-medium">+5 vessels:</span> $25/mo per pack
+                <span className="font-medium">+5 vessels:</span> $10/mo per pack
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -176,7 +176,7 @@ export default function MarketingPage() {
                   <CardContent>
                     <p className="text-2xl font-bold">${ex.total}/mo</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      $19 + {ex.packs}×$25
+                      $20 + {ex.packs}×$10
                     </p>
                   </CardContent>
                 </Card>

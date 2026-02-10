@@ -10,7 +10,7 @@ if not stripe.api_key:
 
 
 def get_base_price_id() -> Optional[str]:
-    """Get Stripe price ID for the base plan ($19/mo, includes BASE_VESSELS_INCLUDED vessels)."""
+    """Get Stripe price ID for the base plan $20/mo, includes BASE_VESSELS_INCLUDED vessels)."""
     return os.getenv("STRIPE_PRICE_BASE")
 
 
