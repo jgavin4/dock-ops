@@ -4,6 +4,7 @@ import React from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useApi } from "@/hooks/use-api";
@@ -124,10 +125,40 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-4">
         <h1 className="text-3xl font-bold">Organization Admin</h1>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Admin:</span>
+          <Link
+            href="/admin"
+            className="text-sm font-medium text-foreground underline underline-offset-4"
+          >
+            Members
+          </Link>
+          <span className="text-sm text-muted-foreground">|</span>
+          <Link
+            href="/admin/billing"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            Billing
+          </Link>
+        </div>
         <Button onClick={() => setInviteModalOpen(true)}>Invite Member</Button>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Billing & subscription</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground text-sm mb-4">
+            Manage your subscription, add vessel packs, and view usage.
+          </p>
+          <Button asChild variant="outline">
+            <Link href="/admin/billing">Billing & subscription</Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

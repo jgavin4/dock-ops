@@ -12,7 +12,7 @@ export function ViewBillingCta() {
   return (
     <div className="text-center">
       {isSignedIn ? (
-        <Link href="/settings/billing" className={buttonClass} id="view-billing-btn">
+        <Link href="/admin/billing" className={buttonClass} id="view-billing-btn">
           View Billing
         </Link>
       ) : (

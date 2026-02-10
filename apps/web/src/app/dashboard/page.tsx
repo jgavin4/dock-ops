@@ -243,14 +243,13 @@ export default function DashboardPage() {
     enabled: !!orgId && isSignedIn === true,
   });
 
-  // Calculate if user can add more vessels based on billing limits
+  // Use effective limit (from entitlement; respects override)
+  const effectiveLimit = billing?.vessel_usage?.limit ?? billing?.effective_vessel_limit ?? billing?.vessel_limit;
   const canAddVessel = useMemo(() => {
     if (!billing) return true; // Allow if billing data not loaded yet
-    // Unlimited if vessel_limit is null
-    if (billing.vessel_limit === null) return true;
-    // Can add if current usage is less than limit
-    return billing.vessel_usage.current < billing.vessel_limit;
-  }, [billing]);
+    if (effectiveLimit === null) return true; // Unlimited
+    return billing.vessel_usage.current < effectiveLimit;
+  }, [billing, effectiveLimit]);
 
   const createVesselMutation = useMutation({
     mutationFn: (data: any) => api.createVessel(data),
@@ -361,6 +360,10 @@ export default function DashboardPage() {
     );
   }
 
+  const currentMembership = me?.memberships?.find((m) => m.org_id === orgId);
+  const isAdmin = currentMembership?.role === "ADMIN";
+  const atVesselLimit = billing && effectiveLimit !== null && billing.vessel_usage.current >= effectiveLimit;
+
   return (
     <div>
       <div className="flex justify-between items-center mb-8">
@@ -374,7 +377,7 @@ export default function DashboardPage() {
             disabled={!canAddVessel}
             title={
               !canAddVessel
-                ? "Vessel limit reached. Upgrade your plan to add more vessels."
+                ? "Vessel limit reached. Add more vessel packs in Billing to increase your limit."
                 : ""
             }
           >
@@ -382,6 +385,19 @@ export default function DashboardPage() {
           </Button>
         </div>
       </div>
+
+      {atVesselLimit && isAdmin && (
+        <Card className="mb-6 border-amber-200 bg-amber-50">
+          <CardContent className="pt-6 flex flex-wrap items-center justify-between gap-4">
+            <p className="text-sm text-amber-900">
+              You&apos;ve reached your vessel limit. Add more vessel packs in Billing to allow additional vessels.
+            </p>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/billing">Manage Billing</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {vessels && vessels.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -400,7 +416,7 @@ export default function DashboardPage() {
               disabled={!canAddVessel}
               title={
                 !canAddVessel
-                  ? "Vessel limit reached. Upgrade your plan to add more vessels."
+                  ? "Vessel limit reached. Add more vessel packs in Billing."
                   : ""
               }
             >

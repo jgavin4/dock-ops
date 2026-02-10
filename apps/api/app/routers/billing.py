@@ -81,8 +81,8 @@ def create_checkout_session(
             customer=customer_id,
             mode="subscription",
             line_items=line_items,
-            success_url=f"{web_base_url}/settings/billing?success=1",
-            cancel_url=f"{web_base_url}/settings/billing?canceled=1",
+            success_url=f"{web_base_url}/admin/billing?success=1",
+            cancel_url=f"{web_base_url}/admin/billing?canceled=1",
             allow_promotion_codes=True,
             metadata={"org_id": str(org.id)},
             subscription_data={"metadata": {"org_id": str(org.id)}},
@@ -187,7 +187,7 @@ def create_portal_session(
     try:
         portal_session = stripe.billing_portal.Session.create(
             customer=org.stripe_customer_id,
-            return_url=f"{web_base_url}/settings/billing"
+            return_url=f"{web_base_url}/admin/billing"
         )
         
         return {"url": portal_session.url}
