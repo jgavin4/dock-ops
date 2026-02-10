@@ -10,9 +10,9 @@ export async function apiRequest<T>(
   token?: string | null
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options.headers as HeadersInit),
+    ...(options.headers as Record<string, string>),
   };
   
   // Add org ID header if provided
@@ -27,7 +27,7 @@ export async function apiRequest<T>(
   
   const response = await fetch(url, {
     ...options,
-    headers,
+    headers: headers as HeadersInit,
   });
 
   if (!response.ok) {
@@ -636,7 +636,7 @@ export async function importVessels(
   formData.append("file", file);
   
   const url = `${API_BASE_URL}/api/import/vessels`;
-  const headers: HeadersInit = {};
+  const headers: Record<string, string> = {};
   
   if (orgId) {
     headers["X-Org-Id"] = String(orgId);
@@ -648,7 +648,7 @@ export async function importVessels(
   
   const response = await fetch(url, {
     method: "POST",
-    headers,
+    headers: headers as HeadersInit,
     body: formData,
   });
   
@@ -718,7 +718,7 @@ export async function importMaintenanceTasks(
   formData.append("file", file);
   
   const url = `${API_BASE_URL}/api/import/vessels/${vesselId}/maintenance-tasks`;
-  const headers: HeadersInit = {};
+  const headers: Record<string, string> = {};
   
   if (orgId) {
     headers["X-Org-Id"] = String(orgId);
@@ -730,7 +730,7 @@ export async function importMaintenanceTasks(
   
   const response = await fetch(url, {
     method: "POST",
-    headers,
+    headers: headers as HeadersInit,
     body: formData,
   });
   
