@@ -282,7 +282,7 @@ export default function AdminBillingPage() {
               <Button
                 type="button"
                 variant="outline"
-                size="icon"
+                size="sm"
                 disabled={!canEditPacks || packQuantity <= 0}
                 onClick={() => setPackQuantity((q) => Math.max(0, q - 1))}
               >
@@ -294,7 +294,7 @@ export default function AdminBillingPage() {
               <Button
                 type="button"
                 variant="outline"
-                size="icon"
+                size="sm"
                 disabled={!canEditPacks}
                 onClick={() => setPackQuantity((q) => q + 1)}
               >
