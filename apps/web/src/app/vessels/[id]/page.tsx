@@ -669,25 +669,16 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
                 +
               </Button>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setEditingRequirement(req);
-                  setRequirementModalOpen(true);
-                }}
-              >
-                Edit
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDeleteRequirementId(req.id)}
-              >
-                Delete
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEditingRequirement(req);
+                setRequirementModalOpen(true);
+              }}
+            >
+              Edit
+            </Button>
           </div>
         </div>
       </div>
@@ -779,14 +770,6 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
                               }}
                             >
                               Edit
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 text-destructive hover:text-destructive"
-                              onClick={() => setDeleteGroupId(section.group!.id)}
-                            >
-                              Delete
                             </Button>
                           </div>
                         )}
@@ -886,6 +869,15 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
             createRequirementMutation.mutate(payload as InventoryRequirementCreate);
           }
         }}
+        onDelete={
+          editingRequirement
+            ? () => {
+                setDeleteRequirementId(editingRequirement.id);
+                setRequirementModalOpen(false);
+                setEditingRequirement(null);
+              }
+            : undefined
+        }
         isSaving={
           createRequirementMutation.isPending ||
           updateRequirementMutation.isPending
@@ -961,6 +953,7 @@ function RequirementModal({
   onOpenChange,
   requirement,
   onSave,
+  onDelete,
   isSaving,
   vesselId,
 }: {
@@ -968,6 +961,7 @@ function RequirementModal({
   onOpenChange: (open: boolean) => void;
   requirement: InventoryRequirement | null;
   onSave: (payload: InventoryRequirementCreate | InventoryRequirementUpdate) => void;
+  onDelete?: (id: number) => void;
   isSaving: boolean;
   vesselId: number;
 }) {
@@ -1201,18 +1195,31 @@ function RequirementModal({
               </div>
             )}
           </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isSaving}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save"}
-            </Button>
+          <DialogFooter className="flex-wrap gap-2 sm:justify-between">
+            <div className="flex gap-2 order-last sm:order-none w-full sm:w-auto">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={isSaving}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSaving}>
+                {isSaving ? "Saving..." : "Save"}
+              </Button>
+            </div>
+            {requirement && onDelete && (
+              <Button
+                type="button"
+                variant="destructive"
+                className="w-full sm:w-auto"
+                onClick={() => onDelete(requirement.id)}
+                disabled={isSaving}
+              >
+                Delete requirement
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
@@ -1225,12 +1232,14 @@ function GroupModal({
   onOpenChange,
   group,
   onSave,
+  onDelete,
   isSaving,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   group: InventoryGroup | null;
   onSave: (payload: InventoryGroupCreate | InventoryGroupUpdate) => void;
+  onDelete?: (id: number) => void;
   isSaving: boolean;
 }) {
   const [formData, setFormData] = useState({
@@ -1309,18 +1318,31 @@ function GroupModal({
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isSaving}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save"}
-            </Button>
+          <DialogFooter className="flex-wrap gap-2 sm:justify-between">
+            <div className="flex gap-2 order-last sm:order-none w-full sm:w-auto">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={isSaving}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSaving}>
+                {isSaving ? "Saving..." : "Save"}
+              </Button>
+            </div>
+            {group && onDelete && (
+              <Button
+                type="button"
+                variant="destructive"
+                className="w-full sm:w-auto"
+                onClick={() => onDelete(group.id)}
+                disabled={isSaving}
+              >
+                Delete group
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>
