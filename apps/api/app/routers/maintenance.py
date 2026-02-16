@@ -6,6 +6,8 @@ from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
 from fastapi import Path
+from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -25,6 +27,10 @@ from app.schemas import MaintenanceTaskOut
 from app.schemas import MaintenanceTaskUpdate
 
 router = APIRouter(tags=["maintenance"])
+
+
+class TasksReorderPayload(BaseModel):
+    task_ids: list[int]
 
 
 def verify_vessel_access(
@@ -55,7 +61,10 @@ def list_tasks(
         db.execute(
             select(MaintenanceTask)
             .where(MaintenanceTask.vessel_id == vessel_id)
-            .order_by(MaintenanceTask.id)
+            .order_by(
+                MaintenanceTask.sort_order.asc().nulls_last(),
+                MaintenanceTask.name,
+            )
         )
         .scalars()
         .all()
@@ -92,6 +101,15 @@ def create_task(
         if not payload.next_due_at:
             payload.next_due_at = payload.due_date
 
+    max_order = (
+        db.execute(
+            select(func.max(MaintenanceTask.sort_order)).where(
+                MaintenanceTask.vessel_id == vessel.id
+            )
+        )
+        .scalar()
+    )
+    next_order = (max_order or -1) + 1
     task = MaintenanceTask(
         vessel_id=vessel.id,
         name=payload.name,
@@ -102,11 +120,53 @@ def create_task(
         next_due_at=payload.next_due_at,
         critical=payload.critical,
         is_active=payload.is_active,
+        sort_order=next_order,
     )
     db.add(task)
     db.commit()
     db.refresh(task)
     return task
+
+
+@router.put("/api/vessels/{vessel_id}/maintenance/tasks/reorder")
+def reorder_tasks(
+    vessel_id: int = Path(ge=1),
+    payload: TasksReorderPayload = ...,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_current_auth),
+) -> None:
+    """Reorder maintenance tasks. Only users with edit permission can reorder."""
+    if not can_edit_maintenance_tasks(auth):
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient permissions to reorder maintenance tasks",
+        )
+    vessel = verify_vessel_access(vessel_id, db, auth)
+    if not payload.task_ids:
+        return
+    tasks = (
+        db.execute(
+            select(MaintenanceTask)
+            .join(Vessel)
+            .where(
+                MaintenanceTask.vessel_id == vessel.id,
+                Vessel.org_id == auth.org_id,
+                MaintenanceTask.id.in_(payload.task_ids),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    found_ids = {t.id for t in tasks}
+    if found_ids != set(payload.task_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="All task_ids must belong to this vessel",
+        )
+    order_by_id = {tid: i for i, tid in enumerate(payload.task_ids)}
+    for t in tasks:
+        t.sort_order = order_by_id[t.id]
+    db.commit()
 
 
 @router.patch("/api/maintenance/tasks/{task_id}", response_model=MaintenanceTaskOut)

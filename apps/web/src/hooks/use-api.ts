@@ -134,6 +134,34 @@ export function useApi() {
           method: "DELETE",
         }, orgId, token)
       ),
+    reorderInventoryGroups: (vesselId: number, groupIds: number[]) =>
+      withAuth((token, orgId) =>
+        api.apiRequest<void>(
+          `/api/vessels/${vesselId}/inventory/groups/reorder`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ group_ids: groupIds }),
+          },
+          orgId,
+          token
+        )
+      ),
+    reorderInventoryItems: (
+      vesselId: number,
+      groupId: number | null,
+      itemIds: number[]
+    ) =>
+      withAuth((token, orgId) =>
+        api.apiRequest<void>(
+          `/api/vessels/${vesselId}/inventory/items/reorder`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ group_id: groupId, item_ids: itemIds }),
+          },
+          orgId,
+          token
+        )
+      ),
     listInventoryChecks: (vesselId: number) =>
       withAuth((token, orgId) =>
         api.apiRequest<api.InventoryCheck[]>(
@@ -211,6 +239,18 @@ export function useApi() {
           {
             method: "PATCH",
             body: JSON.stringify(data),
+          },
+          orgId,
+          token
+        )
+      ),
+    reorderMaintenanceTasks: (vesselId: number, taskIds: number[]) =>
+      withAuth((token, orgId) =>
+        api.apiRequest<void>(
+          `/api/vessels/${vesselId}/maintenance/tasks/reorder`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ task_ids: taskIds }),
           },
           orgId,
           token

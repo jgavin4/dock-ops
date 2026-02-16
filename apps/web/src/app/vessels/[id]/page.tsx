@@ -38,6 +38,177 @@ import {
 import { ImportDialog } from "@/components/import-dialog";
 import Link from "next/link";
 import { format } from "date-fns";
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { cn } from "@/lib/utils";
+
+function DragHandleIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+      aria-hidden
+    >
+      <path d="M8 6h.01" />
+      <path d="M8 12h.01" />
+      <path d="M8 18h.01" />
+      <path d="M16 6h.01" />
+      <path d="M16 12h.01" />
+      <path d="M16 18h.01" />
+    </svg>
+  );
+}
+
+function SortableSectionRow({
+  id,
+  children,
+  disabled,
+}: {
+  id: string;
+  children: React.ReactNode;
+  disabled?: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, disabled });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={cn(
+        "flex items-center gap-2 w-full",
+        isDragging && "opacity-50 z-10"
+      )}
+    >
+      {!disabled && (
+        <span
+          className="touch-none cursor-grab active:cursor-grabbing p-1.5 -ml-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/80"
+          {...listeners}
+          {...attributes}
+          aria-label="Drag to reorder group"
+        >
+          <DragHandleIcon />
+        </span>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function SortableRequirementCard({
+  id,
+  children,
+  disabled,
+}: {
+  id: number;
+  children: React.ReactNode;
+  disabled?: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: String(id), disabled });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={cn(
+        "flex items-start gap-2",
+        isDragging && "opacity-50 shadow-lg z-10"
+      )}
+    >
+      {!disabled && (
+        <span
+          className="touch-none cursor-grab active:cursor-grabbing p-1.5 rounded mt-3 text-muted-foreground hover:text-foreground hover:bg-muted/80 shrink-0"
+          {...listeners}
+          {...attributes}
+          aria-label="Drag to reorder item"
+        >
+          <DragHandleIcon />
+        </span>
+      )}
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function SortableMaintenanceRow({
+  id,
+  children,
+  disabled,
+}: {
+  id: number;
+  children: React.ReactNode;
+  disabled?: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: String(id), disabled });
+  return (
+    <tr
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={cn(isDragging && "opacity-50 bg-muted/50")}
+    >
+      <td className="p-2 w-10 align-top">
+        {!disabled && (
+          <span
+            className="touch-none cursor-grab active:cursor-grabbing p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/80 inline-block"
+            {...listeners}
+            {...attributes}
+            aria-label="Drag to reorder task"
+          >
+            <DragHandleIcon />
+          </span>
+        )}
+      </td>
+      {children}
+    </tr>
+  );
+}
 
 // Utility function to get user initials
 function getUserInitials(name?: string | null, email?: string | null): string {
@@ -462,7 +633,101 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
     },
   });
 
-  // Build grouped list: groups A→Z, items within each A→Z, ungrouped at bottom. Apply search by item name and group name.
+  const reorderGroupsMutation = useMutation({
+    mutationFn: (groupIds: number[]) =>
+      api.reorderInventoryGroups(vesselId, groupIds),
+    onMutate: async (groupIds) => {
+      await queryClient.cancelQueries({
+        queryKey: ["inventory-groups", vesselId],
+      });
+      const prev = queryClient.getQueryData<InventoryGroup[]>([
+        "inventory-groups",
+        vesselId,
+      ]);
+      if (!prev) return { prev };
+      const orderMap = new Map(groupIds.map((id, i) => [id, i]));
+      const sorted = [...prev].sort((a, b) => {
+        const oa = orderMap.get(a.id) ?? 9999;
+        const ob = orderMap.get(b.id) ?? 9999;
+        return oa - ob;
+      });
+      queryClient.setQueryData(["inventory-groups", vesselId], sorted);
+      return { prev };
+    },
+    onError: (_err, _groupIds, ctx) => {
+      if (ctx?.prev)
+        queryClient.setQueryData(
+          ["inventory-groups", vesselId],
+          ctx.prev
+        );
+      toast.error("Failed to reorder groups");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["inventory-groups", vesselId],
+      });
+    },
+  });
+
+  const reorderItemsMutation = useMutation({
+    mutationFn: ({
+      groupId,
+      itemIds,
+    }: {
+      groupId: number | null;
+      itemIds: number[];
+    }) => api.reorderInventoryItems(vesselId, groupId, itemIds),
+    onMutate: async ({ groupId, itemIds }) => {
+      await queryClient.cancelQueries({
+        queryKey: ["inventory-requirements", vesselId],
+      });
+      const prev = queryClient.getQueryData<InventoryRequirement[]>([
+        "inventory-requirements",
+        vesselId,
+      ]);
+      if (!prev) return { prev };
+      const sectionIds = new Set(itemIds);
+      const sectionReqs = itemIds.map((id) =>
+        prev.find((r) => r.id === id)
+      ).filter(Boolean) as InventoryRequirement[];
+      const others = prev.filter((r) => !sectionIds.has(r.id));
+      const firstIdx = prev.findIndex((r) => sectionIds.has(r.id));
+      const reordered =
+        firstIdx < 0
+          ? prev
+          : [
+              ...prev.slice(0, firstIdx),
+              ...sectionReqs,
+              ...prev.slice(firstIdx + sectionReqs.length),
+            ];
+      queryClient.setQueryData(
+        ["inventory-requirements", vesselId],
+        reordered
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev)
+        queryClient.setQueryData(
+          ["inventory-requirements", vesselId],
+          ctx.prev
+        );
+      toast.error("Failed to reorder items");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["inventory-requirements", vesselId],
+      });
+    },
+  });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  );
+
+  // Build grouped list from API order (sort_order). Apply search by item name and group name.
   const inventorySections = React.useMemo(() => {
     if (!requirements) return [];
     const q = searchQuery.trim().toLowerCase();
@@ -491,16 +756,10 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
       }
     });
 
-    const sortItems = (a: InventoryRequirement, b: InventoryRequirement) =>
-      a.item_name.localeCompare(b.item_name, undefined, { sensitivity: "base" });
-    Object.keys(grouped).forEach((id) => {
-      grouped[Number(id)].sort(sortItems);
-    });
-    ungrouped.sort(sortItems);
-
-    const sortedGroups = (groups ?? [])
-      .filter((g) => (grouped[g.id]?.length ?? 0) > 0)
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    // Use API order: groups already sorted by sort_order from list endpoint
+    const groupsWithItems = (groups ?? []).filter(
+      (g) => (grouped[g.id]?.length ?? 0) > 0
+    );
 
     const sections: Array<{
       id: string;
@@ -510,7 +769,7 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
       missingCount: number;
     }> = [];
 
-    sortedGroups.forEach((group) => {
+    groupsWithItems.forEach((group) => {
       const items = grouped[group.id] ?? [];
       let missingCount = 0;
       items.forEach((req) => {
@@ -545,6 +804,45 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
 
     return sections;
   }, [requirements, groups, searchQuery, latestQuantities]);
+
+  const sectionIds = inventorySections.map((s) => s.id);
+
+  const handleGroupDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = sectionIds.indexOf(String(active.id));
+    const newIndex = sectionIds.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+    const newOrder = arrayMove(sectionIds, oldIndex, newIndex);
+    const groupIds = newOrder
+      .filter((id: string) => id !== "ungrouped")
+      .map((id: string) => parseInt(id.replace("group-", ""), 10));
+    if (groupIds.length === 0) return;
+    reorderGroupsMutation.mutate(groupIds);
+  };
+
+  const handleItemDragEnd = (
+    section: (typeof inventorySections)[0],
+    event: DragEndEvent
+  ) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const itemIds = section.items.map((r) => String(r.id));
+    const oldIndex = itemIds.indexOf(String(active.id));
+    const newIndex = itemIds.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+    const newOrder = arrayMove(
+      section.items.map((r) => r.id),
+      oldIndex,
+      newIndex
+    );
+    reorderItemsMutation.mutate({
+      groupId: section.group?.id ?? null,
+      itemIds: newOrder,
+    });
+  };
+
+  const canEditInventory = true;
 
   // Helper function to render requirement card
   const renderRequirementCard = (req: InventoryRequirement) => {
@@ -741,52 +1039,90 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
                   No items match your search.
                 </p>
               ) : (
-                <Accordion type="multiple" defaultValue={inventorySections.map((s) => s.id)}>
-                  {inventorySections.map((section) => (
-                    <AccordionItem key={section.id} value={section.id}>
-                      <div className="flex items-center gap-2">
-                        <AccordionTrigger className="flex-1 py-3 hover:no-underline">
-                          <span className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium">{section.name}</span>
-                            <span className="text-muted-foreground text-sm font-normal">
-                              {section.items.length} item{section.items.length !== 1 ? "s" : ""}
-                            </span>
-                            {section.missingCount > 0 && (
-                              <Badge variant="secondary" className="text-xs">
-                                {section.missingCount} missing
-                              </Badge>
+                <DndContext
+                  sensors={sensors}
+                  onDragEnd={handleGroupDragEnd}
+                >
+                  <SortableContext
+                    items={sectionIds}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <Accordion
+                      type="multiple"
+                      defaultValue={inventorySections.map((s) => s.id)}
+                    >
+                      {inventorySections.map((section) => (
+                        <AccordionItem key={section.id} value={section.id}>
+                          <SortableSectionRow
+                            id={section.id}
+                            disabled={!canEditInventory}
+                          >
+                            <AccordionTrigger className="flex-1 py-3 hover:no-underline">
+                              <span className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium">{section.name}</span>
+                                <span className="text-muted-foreground text-sm font-normal">
+                                  {section.items.length} item{section.items.length !== 1 ? "s" : ""}
+                                </span>
+                                {section.missingCount > 0 && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {section.missingCount} missing
+                                  </Badge>
+                                )}
+                              </span>
+                            </AccordionTrigger>
+                            {section.group && (
+                              <div
+                                className="flex gap-1 shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8"
+                                  onClick={() => {
+                                    setEditingGroup(section.group!);
+                                    setGroupModalOpen(true);
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              </div>
                             )}
-                          </span>
-                        </AccordionTrigger>
-                        {section.group && (
-                          <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8"
-                              onClick={() => {
-                                setEditingGroup(section.group!);
-                                setGroupModalOpen(true);
-                              }}
+                          </SortableSectionRow>
+                          <AccordionContent>
+                            {section.group?.description && (
+                              <p className="text-xs text-muted-foreground mb-3 pl-0">
+                                {section.group.description}
+                              </p>
+                            )}
+                            <DndContext
+                              onDragEnd={(e: DragEndEvent) =>
+                                handleItemDragEnd(section, e)
+                              }
                             >
-                              Edit
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                      <AccordionContent>
-                        {section.group?.description && (
-                          <p className="text-xs text-muted-foreground mb-3 pl-0">
-                            {section.group.description}
-                          </p>
-                        )}
-                        <div className="space-y-3">
-                          {section.items.map((req) => renderRequirementCard(req))}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
+                              <SortableContext
+                                items={section.items.map((r) => String(r.id))}
+                                strategy={verticalListSortingStrategy}
+                              >
+                                <div className="space-y-3">
+                                  {section.items.map((req) => (
+                                    <SortableRequirementCard
+                                      key={req.id}
+                                      id={req.id}
+                                      disabled={!canEditInventory}
+                                    >
+                                      {renderRequirementCard(req)}
+                                    </SortableRequirementCard>
+                                  ))}
+                                </div>
+                              </SortableContext>
+                            </DndContext>
+                          </AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+                  </SortableContext>
+                </DndContext>
               )}
             </>
           )}
@@ -1566,6 +1902,7 @@ function MaintenanceTab({ vesselId }: { vesselId: number }) {
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [viewingLogsTaskId, setViewingLogsTaskId] = useState<number | null>(null);
   const [filter, setFilter] = useState<"all" | "overdue" | "due_soon" | "active">("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [importTaskOpen, setImportTaskOpen] = useState(false);
 
   const { data: tasks, isLoading: tasksLoading } = useQuery({
@@ -1597,16 +1934,28 @@ function MaintenanceTab({ vesselId }: { vesselId: number }) {
   const now = new Date();
   const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const filteredTasks = tasks?.filter((task) => {
-    if (!task.is_active && filter === "active") return false;
-    if (filter === "all") return true;
-    if (filter === "active") return task.is_active;
-    if (!task.next_due_at) return false;
-    const dueDate = new Date(task.next_due_at);
-    if (filter === "overdue") return dueDate < now;
-    if (filter === "due_soon") return dueDate <= sevenDaysFromNow && dueDate >= now;
-    return true;
-  });
+  const filteredTasks = React.useMemo(() => {
+    let list = tasks ?? [];
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (task) =>
+          task.name.toLowerCase().includes(q) ||
+          (task.description ?? "").toLowerCase().includes(q)
+      );
+    }
+    return list.filter((task) => {
+      if (!task.is_active && filter === "active") return false;
+      if (filter === "all") return true;
+      if (filter === "active") return task.is_active;
+      if (!task.next_due_at) return false;
+      const dueDate = new Date(task.next_due_at);
+      if (filter === "overdue") return dueDate < now;
+      if (filter === "due_soon")
+        return dueDate <= sevenDaysFromNow && dueDate >= now;
+      return true;
+    });
+  }, [tasks, searchQuery, filter, now, sevenDaysFromNow]);
 
   const overdueCount = tasks?.filter(
     (task) => task.next_due_at && new Date(task.next_due_at) < now
@@ -1668,6 +2017,70 @@ function MaintenanceTab({ vesselId }: { vesselId: number }) {
     },
   });
 
+  const reorderTasksMutation = useMutation({
+    mutationFn: (taskIds: number[]) =>
+      api.reorderMaintenanceTasks(vesselId, taskIds),
+    onMutate: async (taskIds) => {
+      await queryClient.cancelQueries({
+        queryKey: ["maintenance-tasks", vesselId],
+      });
+      const prev = queryClient.getQueryData<any[]>([
+        "maintenance-tasks",
+        vesselId,
+      ]);
+      if (!prev) return { prev };
+      const orderMap = new Map(taskIds.map((id, i) => [id, i]));
+      const sorted = [...prev].sort((a, b) => {
+        const oa = orderMap.get(a.id) ?? 9999;
+        const ob = orderMap.get(b.id) ?? 9999;
+        return oa - ob;
+      });
+      queryClient.setQueryData(["maintenance-tasks", vesselId], sorted);
+      return { prev };
+    },
+    onError: (_err, _taskIds, ctx) => {
+      if (ctx?.prev)
+        queryClient.setQueryData(
+          ["maintenance-tasks", vesselId],
+          ctx.prev
+        );
+      toast.error("Failed to reorder tasks");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["maintenance-tasks", vesselId],
+      });
+    },
+  });
+
+  const maintenanceSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  );
+
+  const handleMaintenanceTaskDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const filteredIds = (filteredTasks ?? []).map((t) => t.id);
+    const oldIndex = filteredIds.indexOf(Number(active.id));
+    const newIndex = filteredIds.indexOf(Number(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+    const newFilteredOrder = arrayMove(filteredIds, oldIndex, newIndex);
+    const allIds = (tasks ?? []).map((t) => t.id);
+    const filteredSet = new Set(filteredIds);
+    const filteredIndices = allIds
+      .map((id, i) => (filteredSet.has(id) ? i : -1))
+      .filter((i) => i >= 0);
+    const newAllOrder = allIds.slice();
+    newFilteredOrder.forEach((id, j) => {
+      newAllOrder[filteredIndices[j]] = id;
+    });
+    reorderTasksMutation.mutate(newAllOrder);
+  };
+
+  const canEditMaintenance = true;
+
   const { data: logs, isLoading: logsLoading } = useQuery({
     queryKey: ["maintenance-logs", viewingLogsTaskId],
     queryFn: () => api.listMaintenanceLogs(viewingLogsTaskId!),
@@ -1720,9 +2133,17 @@ function MaintenanceTab({ vesselId }: { vesselId: number }) {
       {/* Tasks List */}
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>Tasks</CardTitle>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 items-center">
+              <Input
+                type="search"
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-48 max-w-full"
+                aria-label="Search maintenance tasks"
+              />
               <Select
                 value={filter}
                 onChange={(e) =>
@@ -1750,137 +2171,154 @@ function MaintenanceTab({ vesselId }: { vesselId: number }) {
           ) : !filteredTasks || filteredTasks.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-muted-foreground mb-4">
-                {filter === "all"
+                {filter === "all" && !searchQuery.trim()
                   ? "No maintenance tasks yet."
+                  : searchQuery.trim()
+                  ? "No tasks match your search."
                   : `No ${filter.replace("_", " ")} tasks.`}
               </p>
-              {filter === "all" && (
+              {filter === "all" && !searchQuery.trim() && (
                 <Button onClick={() => setTaskModalOpen(true)}>
                   Add your first maintenance task
                 </Button>
               )}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-2">Task</th>
-                    <th className="text-left p-2">Cadence</th>
-                    <th className="text-left p-2">Next Due</th>
-                    <th className="text-left p-2">Last Completed</th>
-                    <th className="text-left p-2">Critical</th>
-                    <th className="text-left p-2">Status</th>
-                    <th className="text-left p-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTasks.map((task) => {
-                    const status = getTaskStatus(task);
-                    const cadenceText =
-                      task.cadence_type === "interval"
-                        ? `Every ${task.interval_days} days`
-                        : task.due_date
-                        ? `Due on ${format(new Date(task.due_date), "yyyy-MM-dd")}`
-                        : "No cadence";
-                    return (
-                      <tr key={task.id} className="border-b">
-                        <td className="p-2">
-                          <div>
-                            <p className="font-medium">{task.name}</p>
-                            {task.description && (
-                              <p className="text-sm text-muted-foreground">
-                                {task.description}
-                              </p>
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-2">{cadenceText}</td>
-                        <td className="p-2">
-                          {task.next_due_at
-                            ? format(new Date(task.next_due_at), "PPp")
-                            : "-"}
-                        </td>
-                        <td className="p-2">
-                          {latestLogsMap[task.id] ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm">
-                                {format(
-                                  new Date(latestLogsMap[task.id]!.performed_at),
-                                  "PPp"
-                                )}
-                              </span>
-                              <span
-                                className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium bg-primary text-primary-foreground"
-                                title={
-                                  latestLogsMap[task.id]!.performed_by_name ||
-                                  latestLogsMap[task.id]!.performed_by_email ||
-                                  "Unknown user"
-                                }
-                              >
-                                {getUserInitials(
-                                  latestLogsMap[task.id]!.performed_by_name,
-                                  latestLogsMap[task.id]!.performed_by_email
-                                )}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">
-                              Never
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-2">
-                          {task.critical ? (
-                            <Badge variant="destructive">Critical</Badge>
-                          ) : (
-                            "-"
-                          )}
-                        </td>
-                        <td className="p-2">
-                          <Badge variant={status.variant}>{status.label}</Badge>
-                        </td>
-                        <td className="p-2">
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setLogTaskId(task.id);
-                                setLogModalOpen(true);
-                              }}
-                              disabled={!task.is_active}
-                            >
-                              Log Completion
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setViewingLogsTaskId(
-                                  viewingLogsTaskId === task.id ? null : task.id
-                                );
-                              }}
-                            >
-                              {viewingLogsTaskId === task.id ? "Hide" : "View"} Logs
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setEditingTask(task);
-                                setTaskModalOpen(true);
-                              }}
-                            >
-                              Edit
-                            </Button>
-                          </div>
-                        </td>
+            <DndContext
+              sensors={maintenanceSensors}
+              onDragEnd={handleMaintenanceTaskDragEnd}
+            >
+              <SortableContext
+                items={filteredTasks.map((t) => String(t.id))}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left p-2 w-10" aria-label="Reorder" />
+                        <th className="text-left p-2">Task</th>
+                        <th className="text-left p-2">Cadence</th>
+                        <th className="text-left p-2">Next Due</th>
+                        <th className="text-left p-2">Last Completed</th>
+                        <th className="text-left p-2">Critical</th>
+                        <th className="text-left p-2">Status</th>
+                        <th className="text-left p-2">Actions</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody>
+                      {filteredTasks.map((task) => {
+                        const status = getTaskStatus(task);
+                        const cadenceText =
+                          task.cadence_type === "interval"
+                            ? `Every ${task.interval_days} days`
+                            : task.due_date
+                            ? `Due on ${format(new Date(task.due_date), "yyyy-MM-dd")}`
+                            : "No cadence";
+                        return (
+                          <SortableMaintenanceRow
+                            key={task.id}
+                            id={task.id}
+                            disabled={!canEditMaintenance}
+                          >
+                            <td className="p-2">
+                              <div>
+                                <p className="font-medium">{task.name}</p>
+                                {task.description && (
+                                  <p className="text-sm text-muted-foreground">
+                                    {task.description}
+                                  </p>
+                                )}
+                              </div>
+                            </td>
+                            <td className="p-2">{cadenceText}</td>
+                            <td className="p-2">
+                              {task.next_due_at
+                                ? format(new Date(task.next_due_at), "PPp")
+                                : "-"}
+                            </td>
+                            <td className="p-2">
+                              {latestLogsMap[task.id] ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm">
+                                    {format(
+                                      new Date(latestLogsMap[task.id]!.performed_at),
+                                      "PPp"
+                                    )}
+                                  </span>
+                                  <span
+                                    className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium bg-primary text-primary-foreground"
+                                    title={
+                                      latestLogsMap[task.id]!.performed_by_name ||
+                                      latestLogsMap[task.id]!.performed_by_email ||
+                                      "Unknown user"
+                                    }
+                                  >
+                                    {getUserInitials(
+                                      latestLogsMap[task.id]!.performed_by_name,
+                                      latestLogsMap[task.id]!.performed_by_email
+                                    )}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">
+                                  Never
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-2">
+                              {task.critical ? (
+                                <Badge variant="destructive">Critical</Badge>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
+                            <td className="p-2">
+                              <Badge variant={status.variant}>{status.label}</Badge>
+                            </td>
+                            <td className="p-2">
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    setLogTaskId(task.id);
+                                    setLogModalOpen(true);
+                                  }}
+                                  disabled={!task.is_active}
+                                >
+                                  Log Completion
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setViewingLogsTaskId(
+                                      viewingLogsTaskId === task.id ? null : task.id
+                                    );
+                                  }}
+                                >
+                                  {viewingLogsTaskId === task.id ? "Hide" : "View"} Logs
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditingTask(task);
+                                    setTaskModalOpen(true);
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              </div>
+                            </td>
+                          </SortableMaintenanceRow>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </SortableContext>
+            </DndContext>
           )}
         </CardContent>
       </Card>

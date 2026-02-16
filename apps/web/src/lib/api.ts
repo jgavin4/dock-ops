@@ -87,6 +87,7 @@ export type InventoryRequirement = {
   id: number;
   vessel_id: number;
   parent_group_id: number | null;
+  sort_order: number | null;
   item_name: string;
   required_quantity: number;
   category: string | null;
@@ -119,6 +120,7 @@ export type InventoryGroup = {
   vessel_id: number;
   name: string;
   description: string | null;
+  sort_order: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -190,6 +192,7 @@ export type MaintenanceTask = {
   next_due_at: string | null;
   critical: boolean;
   is_active: boolean;
+  sort_order: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -356,6 +359,33 @@ export async function deleteInventoryGroup(id: number): Promise<void> {
   });
 }
 
+export async function reorderInventoryGroups(
+  vesselId: number,
+  groupIds: number[]
+): Promise<void> {
+  return apiRequest<void>(
+    `/api/vessels/${vesselId}/inventory/groups/reorder`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ group_ids: groupIds }),
+    }
+  );
+}
+
+export async function reorderInventoryItems(
+  vesselId: number,
+  groupId: number | null,
+  itemIds: number[]
+): Promise<void> {
+  return apiRequest<void>(
+    `/api/vessels/${vesselId}/inventory/items/reorder`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ group_id: groupId, item_ids: itemIds }),
+    }
+  );
+}
+
 // Inventory Checks API
 export async function listInventoryChecks(
   vesselId: number
@@ -433,6 +463,19 @@ export async function updateMaintenanceTask(
     method: "PATCH",
     body: JSON.stringify(data),
   });
+}
+
+export async function reorderMaintenanceTasks(
+  vesselId: number,
+  taskIds: number[]
+): Promise<void> {
+  return apiRequest<void>(
+    `/api/vessels/${vesselId}/maintenance/tasks/reorder`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ task_ids: taskIds }),
+    }
+  );
 }
 
 export async function createMaintenanceLog(
