@@ -87,6 +87,7 @@ export type InventoryRequirement = {
   id: number;
   vessel_id: number;
   parent_group_id: number | null;
+  sort_order: number | null;
   item_name: string;
   required_quantity: number;
   category: string | null;
@@ -119,6 +120,7 @@ export type InventoryGroup = {
   vessel_id: number;
   name: string;
   description: string | null;
+  sort_order: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -354,6 +356,33 @@ export async function deleteInventoryGroup(id: number): Promise<void> {
   return apiRequest<void>(`/api/inventory/groups/${id}`, {
     method: "DELETE",
   });
+}
+
+export async function reorderInventoryGroups(
+  vesselId: number,
+  groupIds: number[]
+): Promise<void> {
+  return apiRequest<void>(
+    `/api/vessels/${vesselId}/inventory/groups/reorder`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ group_ids: groupIds }),
+    }
+  );
+}
+
+export async function reorderInventoryItems(
+  vesselId: number,
+  groupId: number | null,
+  itemIds: number[]
+): Promise<void> {
+  return apiRequest<void>(
+    `/api/vessels/${vesselId}/inventory/items/reorder`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ group_id: groupId, item_ids: itemIds }),
+    }
+  );
 }
 
 // Inventory Checks API

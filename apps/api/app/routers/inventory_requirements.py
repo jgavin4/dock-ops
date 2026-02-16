@@ -1,8 +1,12 @@
+from typing import Optional
+
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
 from fastapi import Path
+from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.deps import AuthContext
@@ -19,6 +23,11 @@ from app.schemas import InventoryRequirementOut
 from app.schemas import InventoryRequirementUpdate
 
 router = APIRouter(tags=["inventory-requirements"])
+
+
+class ItemsReorderPayload(BaseModel):
+    group_id: Optional[int] = None
+    item_ids: list[int]
 
 
 def verify_vessel_access(
@@ -83,7 +92,17 @@ def create_requirement(
         )
         if not group:
             raise HTTPException(status_code=404, detail="Inventory group not found or does not belong to this vessel")
-    
+
+    max_order = (
+        db.execute(
+            select(func.max(VesselInventoryRequirement.sort_order)).where(
+                VesselInventoryRequirement.vessel_id == vessel.id,
+                VesselInventoryRequirement.parent_group_id == payload.parent_group_id,
+            )
+        )
+        .scalar()
+    )
+    next_order = (max_order or -1) + 1
     requirement = VesselInventoryRequirement(
         vessel_id=vessel.id,
         parent_group_id=payload.parent_group_id,
@@ -92,11 +111,67 @@ def create_requirement(
         category=payload.category,
         critical=payload.critical,
         notes=payload.notes,
+        sort_order=next_order,
     )
     db.add(requirement)
     db.commit()
     db.refresh(requirement)
     return requirement
+
+
+@router.put("/api/vessels/{vessel_id}/inventory/items/reorder")
+def reorder_items(
+    vessel_id: int = Path(ge=1),
+    payload: ItemsReorderPayload = ...,
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_current_auth),
+) -> None:
+    """Reorder inventory items within a group (or ungrouped). Only users with edit permission can reorder."""
+    if not can_edit_inventory_requirements(auth):
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient permissions to reorder inventory items",
+        )
+    vessel = verify_vessel_access(vessel_id, db, auth)
+    if not payload.item_ids:
+        return
+    if payload.group_id is not None:
+        group = (
+            db.execute(
+                select(InventoryGroup).where(
+                    InventoryGroup.id == payload.group_id,
+                    InventoryGroup.vessel_id == vessel.id,
+                )
+            )
+            .scalars()
+            .one_or_none()
+        )
+        if not group:
+            raise HTTPException(status_code=404, detail="Group not found")
+    requirements = (
+        db.execute(
+            select(VesselInventoryRequirement)
+            .join(Vessel)
+            .where(
+                VesselInventoryRequirement.vessel_id == vessel.id,
+                Vessel.org_id == auth.org_id,
+                VesselInventoryRequirement.id.in_(payload.item_ids),
+                VesselInventoryRequirement.parent_group_id == payload.group_id,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    found_ids = {r.id for r in requirements}
+    if found_ids != set(payload.item_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="All item_ids must belong to this vessel and the given group",
+        )
+    order_by_id = {rid: i for i, rid in enumerate(payload.item_ids)}
+    for r in requirements:
+        r.sort_order = order_by_id[r.id]
+    db.commit()
 
 
 @router.patch("/api/inventory/requirements/{requirement_id}", response_model=InventoryRequirementOut)

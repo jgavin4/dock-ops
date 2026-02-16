@@ -72,6 +72,7 @@ class InventoryRequirementOut(InventoryRequirementBase):
     id: int
     vessel_id: int
     parent_group_id: Optional[int] = None
+    sort_order: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -96,6 +97,7 @@ class InventoryGroupUpdate(BaseModel):
 class InventoryGroupOut(InventoryGroupBase):
     id: int
     vessel_id: int
+    sort_order: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 

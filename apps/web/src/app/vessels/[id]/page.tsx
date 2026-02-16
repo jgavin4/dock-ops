@@ -38,6 +38,138 @@ import {
 import { ImportDialog } from "@/components/import-dialog";
 import Link from "next/link";
 import { format } from "date-fns";
+import {
+  DndContext,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { cn } from "@/lib/utils";
+
+function DragHandleIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+      aria-hidden
+    >
+      <path d="M8 6h.01" />
+      <path d="M8 12h.01" />
+      <path d="M8 18h.01" />
+      <path d="M16 6h.01" />
+      <path d="M16 12h.01" />
+      <path d="M16 18h.01" />
+    </svg>
+  );
+}
+
+function SortableSectionRow({
+  id,
+  children,
+  disabled,
+}: {
+  id: string;
+  children: React.ReactNode;
+  disabled?: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, disabled });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={cn(
+        "flex items-center gap-2 w-full",
+        isDragging && "opacity-50 z-10"
+      )}
+    >
+      {!disabled && (
+        <span
+          role="button"
+          tabIndex={0}
+          className="touch-none cursor-grab active:cursor-grabbing p-1.5 -ml-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/80"
+          {...listeners}
+          {...attributes}
+          aria-label="Drag to reorder group"
+        >
+          <DragHandleIcon />
+        </span>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function SortableRequirementCard({
+  id,
+  children,
+  disabled,
+}: {
+  id: number;
+  children: React.ReactNode;
+  disabled?: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: String(id), disabled });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={cn(
+        "flex items-start gap-2",
+        isDragging && "opacity-50 shadow-lg z-10"
+      )}
+    >
+      {!disabled && (
+        <span
+          role="button"
+          tabIndex={0}
+          className="touch-none cursor-grab active:cursor-grabbing p-1.5 rounded mt-3 text-muted-foreground hover:text-foreground hover:bg-muted/80 shrink-0"
+          {...listeners}
+          {...attributes}
+          aria-label="Drag to reorder item"
+        >
+          <DragHandleIcon />
+        </span>
+      )}
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+}
 
 // Utility function to get user initials
 function getUserInitials(name?: string | null, email?: string | null): string {
@@ -462,7 +594,101 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
     },
   });
 
-  // Build grouped list: groups A→Z, items within each A→Z, ungrouped at bottom. Apply search by item name and group name.
+  const reorderGroupsMutation = useMutation({
+    mutationFn: (groupIds: number[]) =>
+      api.reorderInventoryGroups(vesselId, groupIds),
+    onMutate: async (groupIds) => {
+      await queryClient.cancelQueries({
+        queryKey: ["inventory-groups", vesselId],
+      });
+      const prev = queryClient.getQueryData<InventoryGroup[]>([
+        "inventory-groups",
+        vesselId,
+      ]);
+      if (!prev) return { prev };
+      const orderMap = new Map(groupIds.map((id, i) => [id, i]));
+      const sorted = [...prev].sort((a, b) => {
+        const oa = orderMap.get(a.id) ?? 9999;
+        const ob = orderMap.get(b.id) ?? 9999;
+        return oa - ob;
+      });
+      queryClient.setQueryData(["inventory-groups", vesselId], sorted);
+      return { prev };
+    },
+    onError: (_err, _groupIds, ctx) => {
+      if (ctx?.prev)
+        queryClient.setQueryData(
+          ["inventory-groups", vesselId],
+          ctx.prev
+        );
+      toast.error("Failed to reorder groups");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["inventory-groups", vesselId],
+      });
+    },
+  });
+
+  const reorderItemsMutation = useMutation({
+    mutationFn: ({
+      groupId,
+      itemIds,
+    }: {
+      groupId: number | null;
+      itemIds: number[];
+    }) => api.reorderInventoryItems(vesselId, groupId, itemIds),
+    onMutate: async ({ groupId, itemIds }) => {
+      await queryClient.cancelQueries({
+        queryKey: ["inventory-requirements", vesselId],
+      });
+      const prev = queryClient.getQueryData<InventoryRequirement[]>([
+        "inventory-requirements",
+        vesselId,
+      ]);
+      if (!prev) return { prev };
+      const sectionIds = new Set(itemIds);
+      const sectionReqs = itemIds.map((id) =>
+        prev.find((r) => r.id === id)
+      ).filter(Boolean) as InventoryRequirement[];
+      const others = prev.filter((r) => !sectionIds.has(r.id));
+      const firstIdx = prev.findIndex((r) => sectionIds.has(r.id));
+      const reordered =
+        firstIdx < 0
+          ? prev
+          : [
+              ...prev.slice(0, firstIdx),
+              ...sectionReqs,
+              ...prev.slice(firstIdx + sectionReqs.length),
+            ];
+      queryClient.setQueryData(
+        ["inventory-requirements", vesselId],
+        reordered
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev)
+        queryClient.setQueryData(
+          ["inventory-requirements", vesselId],
+          ctx.prev
+        );
+      toast.error("Failed to reorder items");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["inventory-requirements", vesselId],
+      });
+    },
+  });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  );
+
+  // Build grouped list from API order (sort_order). Apply search by item name and group name.
   const inventorySections = React.useMemo(() => {
     if (!requirements) return [];
     const q = searchQuery.trim().toLowerCase();
@@ -491,16 +717,10 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
       }
     });
 
-    const sortItems = (a: InventoryRequirement, b: InventoryRequirement) =>
-      a.item_name.localeCompare(b.item_name, undefined, { sensitivity: "base" });
-    Object.keys(grouped).forEach((id) => {
-      grouped[Number(id)].sort(sortItems);
-    });
-    ungrouped.sort(sortItems);
-
-    const sortedGroups = (groups ?? [])
-      .filter((g) => (grouped[g.id]?.length ?? 0) > 0)
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    // Use API order: groups already sorted by sort_order from list endpoint
+    const groupsWithItems = (groups ?? []).filter(
+      (g) => (grouped[g.id]?.length ?? 0) > 0
+    );
 
     const sections: Array<{
       id: string;
@@ -510,7 +730,7 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
       missingCount: number;
     }> = [];
 
-    sortedGroups.forEach((group) => {
+    groupsWithItems.forEach((group) => {
       const items = grouped[group.id] ?? [];
       let missingCount = 0;
       items.forEach((req) => {
@@ -545,6 +765,45 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
 
     return sections;
   }, [requirements, groups, searchQuery, latestQuantities]);
+
+  const sectionIds = inventorySections.map((s) => s.id);
+
+  const handleGroupDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = sectionIds.indexOf(String(active.id));
+    const newIndex = sectionIds.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+    const newOrder = arrayMove(sectionIds, oldIndex, newIndex);
+    const groupIds = newOrder
+      .filter((id: string) => id !== "ungrouped")
+      .map((id: string) => parseInt(id.replace("group-", ""), 10));
+    if (groupIds.length === 0) return;
+    reorderGroupsMutation.mutate(groupIds);
+  };
+
+  const handleItemDragEnd = (
+    section: (typeof inventorySections)[0],
+    event: DragEndEvent
+  ) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const itemIds = section.items.map((r) => String(r.id));
+    const oldIndex = itemIds.indexOf(String(active.id));
+    const newIndex = itemIds.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+    const newOrder = arrayMove(
+      section.items.map((r) => r.id),
+      oldIndex,
+      newIndex
+    );
+    reorderItemsMutation.mutate({
+      groupId: section.group?.id ?? null,
+      itemIds: newOrder,
+    });
+  };
+
+  const canEditInventory = true;
 
   // Helper function to render requirement card
   const renderRequirementCard = (req: InventoryRequirement) => {
@@ -741,52 +1000,90 @@ function InventoryTab({ vesselId }: { vesselId: number }) {
                   No items match your search.
                 </p>
               ) : (
-                <Accordion type="multiple" defaultValue={inventorySections.map((s) => s.id)}>
-                  {inventorySections.map((section) => (
-                    <AccordionItem key={section.id} value={section.id}>
-                      <div className="flex items-center gap-2">
-                        <AccordionTrigger className="flex-1 py-3 hover:no-underline">
-                          <span className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium">{section.name}</span>
-                            <span className="text-muted-foreground text-sm font-normal">
-                              {section.items.length} item{section.items.length !== 1 ? "s" : ""}
-                            </span>
-                            {section.missingCount > 0 && (
-                              <Badge variant="secondary" className="text-xs">
-                                {section.missingCount} missing
-                              </Badge>
+                <DndContext
+                  sensors={sensors}
+                  onDragEnd={handleGroupDragEnd}
+                >
+                  <SortableContext
+                    items={sectionIds}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <Accordion
+                      type="multiple"
+                      defaultValue={inventorySections.map((s) => s.id)}
+                    >
+                      {inventorySections.map((section) => (
+                        <AccordionItem key={section.id} value={section.id}>
+                          <SortableSectionRow
+                            id={section.id}
+                            disabled={!canEditInventory}
+                          >
+                            <AccordionTrigger className="flex-1 py-3 hover:no-underline">
+                              <span className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium">{section.name}</span>
+                                <span className="text-muted-foreground text-sm font-normal">
+                                  {section.items.length} item{section.items.length !== 1 ? "s" : ""}
+                                </span>
+                                {section.missingCount > 0 && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {section.missingCount} missing
+                                  </Badge>
+                                )}
+                              </span>
+                            </AccordionTrigger>
+                            {section.group && (
+                              <div
+                                className="flex gap-1 shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8"
+                                  onClick={() => {
+                                    setEditingGroup(section.group!);
+                                    setGroupModalOpen(true);
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              </div>
                             )}
-                          </span>
-                        </AccordionTrigger>
-                        {section.group && (
-                          <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8"
-                              onClick={() => {
-                                setEditingGroup(section.group!);
-                                setGroupModalOpen(true);
-                              }}
+                          </SortableSectionRow>
+                          <AccordionContent>
+                            {section.group?.description && (
+                              <p className="text-xs text-muted-foreground mb-3 pl-0">
+                                {section.group.description}
+                              </p>
+                            )}
+                            <DndContext
+                              onDragEnd={(e: DragEndEvent) =>
+                                handleItemDragEnd(section, e)
+                              }
                             >
-                              Edit
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                      <AccordionContent>
-                        {section.group?.description && (
-                          <p className="text-xs text-muted-foreground mb-3 pl-0">
-                            {section.group.description}
-                          </p>
-                        )}
-                        <div className="space-y-3">
-                          {section.items.map((req) => renderRequirementCard(req))}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
+                              <SortableContext
+                                items={section.items.map((r) => String(r.id))}
+                                strategy={verticalListSortingStrategy}
+                              >
+                                <div className="space-y-3">
+                                  {section.items.map((req) => (
+                                    <SortableRequirementCard
+                                      key={req.id}
+                                      id={req.id}
+                                      disabled={!canEditInventory}
+                                    >
+                                      {renderRequirementCard(req)}
+                                    </SortableRequirementCard>
+                                  ))}
+                                </div>
+                              </SortableContext>
+                            </DndContext>
+                          </AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+                  </SortableContext>
+                </DndContext>
               )}
             </>
           )}

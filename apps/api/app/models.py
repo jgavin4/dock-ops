@@ -178,7 +178,7 @@ class Vessel(Base):
         back_populates="vessel", cascade="all, delete-orphan", order_by="VesselComment.created_at.desc()"
     )
     inventory_groups: Mapped[list["InventoryGroup"]] = relationship(
-        back_populates="vessel", cascade="all, delete-orphan", order_by="InventoryGroup.name"
+        back_populates="vessel", cascade="all, delete-orphan"
     )
 
 
@@ -190,6 +190,7 @@ class InventoryGroup(Base):
     vessel_id: Mapped[int] = mapped_column(ForeignKey("vessels.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
+    sort_order: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -221,6 +222,7 @@ class VesselInventoryRequirement(Base):
     category: Mapped[Optional[str]] = mapped_column(String(255))
     critical: Mapped[bool] = mapped_column(default=False, server_default="false")
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    sort_order: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
