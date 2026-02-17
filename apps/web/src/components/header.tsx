@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useApi } from "@/hooks/use-api";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetHeader, SheetTitle, SheetContent } from "@/components/ui/sheet";
 
 export function Header() {
   const pathname = usePathname();
@@ -57,6 +58,10 @@ export function Header() {
     }
   }, [isSignedIn, orgId, activeMemberships, setOrgId, me]);
 
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+
+  const closeMobileMenu = () => setMobileMenuOpen(false);
+
   return (
     <header className="border-b bg-background sticky top-0 z-50">
       <div className="container mx-auto px-4 py-4">
@@ -71,16 +76,35 @@ export function Header() {
               priority
             />
           </Link>
-          <nav className="flex items-center gap-2 sm:gap-4 flex-1 justify-end min-w-0">
+          <div className="sm:hidden flex items-center gap-2 shrink-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="Open menu"
+            >
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </Button>
+            {isSignedIn ? (
+              <UserButton afterSignOutUrl="/" />
+            ) : (
+              <SignInButton mode="modal">
+                <Button variant="outline" size="sm">Sign In</Button>
+              </SignInButton>
+            )}
+          </div>
+          <nav className="hidden sm:flex items-center gap-2 sm:gap-4 flex-1 justify-end min-w-0">
             {isPublicLanding && (
               <>
-                <a href="/#features" className="hidden sm:inline-block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
+                <a href="/#features" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
                   Features
                 </a>
-                <a href="/#pricing" className="hidden sm:inline-block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
+                <a href="/#pricing" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
                   Pricing
                 </a>
-                <a href="/#contact" className="hidden sm:inline-block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
+                <a href="/#contact" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
                   Contact
                 </a>
               </>
@@ -120,7 +144,7 @@ export function Header() {
                     </Link>
                   </div>
                 )}
-                <div className="hidden sm:flex items-center gap-4">
+                <div className="flex items-center gap-4">
                   {!isPublicLanding && me?.user.is_super_admin && (
                     <Link
                       href="/super-admin"
@@ -154,6 +178,82 @@ export function Header() {
           </nav>
         </div>
       </div>
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetHeader className="flex-row items-center justify-between space-y-0">
+          <SheetTitle>Menu</SheetTitle>
+          <Button variant="ghost" size="sm" onClick={closeMobileMenu} aria-label="Close menu">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </Button>
+        </SheetHeader>
+        <SheetContent className="flex flex-col gap-4">
+          {isPublicLanding && (
+            <>
+              <a href="/#features" className="text-base font-medium py-2" onClick={closeMobileMenu}>
+                Features
+              </a>
+              <a href="/#pricing" className="text-base font-medium py-2" onClick={closeMobileMenu}>
+                Pricing
+              </a>
+              <a href="/#contact" className="text-base font-medium py-2" onClick={closeMobileMenu}>
+                Contact
+              </a>
+            </>
+          )}
+          {isSignedIn && !isPublicLanding && (
+            <>
+              {activeMemberships.length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-muted-foreground">Organization</label>
+                  <Select
+                    value={orgId?.toString() || ""}
+                    onChange={(e) => {
+                      try {
+                        const newOrgId = e.target.value ? parseInt(e.target.value, 10) : null;
+                        if (newOrgId && !isNaN(newOrgId)) {
+                          setOrgId(newOrgId);
+                        } else if (!e.target.value) {
+                          setOrgId(null);
+                        }
+                      } catch (error) {
+                        console.error("Error updating org selection:", error);
+                      }
+                    }}
+                    className="w-full text-sm"
+                  >
+                    {activeMemberships.map((m) => (
+                      <option key={m.org_id} value={m.org_id.toString()}>
+                        {m.org_name} ({m.role})
+                      </option>
+                    ))}
+                  </Select>
+                  <Link
+                    href="/onboarding"
+                    className="text-sm text-muted-foreground hover:text-foreground inline-block py-1"
+                    onClick={closeMobileMenu}
+                  >
+                    + Add organization
+                  </Link>
+                </div>
+              )}
+              <Link href="/dashboard" className="text-base font-medium py-2 block" onClick={closeMobileMenu}>
+                Dashboard
+              </Link>
+              {currentOrg?.role === "ADMIN" && (
+                <Link href="/admin" className="text-base font-medium py-2 block" onClick={closeMobileMenu}>
+                  Admin
+                </Link>
+              )}
+              {me?.user.is_super_admin && (
+                <Link href="/super-admin" className="text-base font-medium py-2 block" onClick={closeMobileMenu}>
+                  Super Admin
+                </Link>
+              )}
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </header>
   );
 }
