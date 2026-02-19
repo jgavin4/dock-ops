@@ -128,6 +128,13 @@ def create_task(
             payload.next_due_at = datetime.now(timezone.utc) + timedelta(
                 days=payload.interval_days
             )
+    elif payload.cadence_type == MaintenanceCadenceType.INTERVAL_HOURS:
+        if not payload.interval_hours:
+            raise HTTPException(
+                status_code=400, detail="interval_hours is required for interval_hours cadence"
+            )
+        # For interval_hours, next_due_at is computed dynamically based on vessel hours
+        # so we don't set it here
     elif payload.cadence_type == MaintenanceCadenceType.SPECIFIC_DATE:
         if not payload.due_date:
             raise HTTPException(
@@ -145,12 +152,17 @@ def create_task(
         .scalar()
     )
     next_order = (max_order or -1) + 1
+    interval_hours_decimal = None
+    if payload.interval_hours is not None:
+        interval_hours_decimal = Decimal(str(payload.interval_hours))
+    
     task = MaintenanceTask(
         vessel_id=vessel.id,
         name=payload.name,
         description=payload.description,
         cadence_type=payload.cadence_type,
         interval_days=payload.interval_days,
+        interval_hours=interval_hours_decimal,
         due_date=payload.due_date,
         next_due_at=payload.next_due_at,
         critical=payload.critical,
@@ -241,6 +253,13 @@ def update_task(
                 updates["next_due_at"] = datetime.now(timezone.utc) + timedelta(
                     days=interval_days
                 )
+        elif new_cadence == MaintenanceCadenceType.INTERVAL_HOURS:
+            if not updates.get("interval_hours") and not task.interval_hours:
+                raise HTTPException(
+                    status_code=400, detail="interval_hours is required for interval_hours cadence"
+                )
+            # For interval_hours, next_due_at is computed dynamically based on vessel hours
+            # so we don't set it here
         elif new_cadence == MaintenanceCadenceType.SPECIFIC_DATE:
             if not updates.get("due_date") and not task.due_date:
                 raise HTTPException(

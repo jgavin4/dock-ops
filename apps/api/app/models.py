@@ -36,6 +36,7 @@ class InventoryCheckLineCondition(str, enum.Enum):
 
 class MaintenanceCadenceType(str, enum.Enum):
     INTERVAL = "interval"
+    INTERVAL_HOURS = "interval_hours"
     SPECIFIC_DATE = "specific_date"
 
 

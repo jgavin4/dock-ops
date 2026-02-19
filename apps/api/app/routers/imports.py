@@ -279,8 +279,9 @@ def import_maintenance_tasks(
     Expected columns:
     - name (required)
     - description (optional)
-    - cadence_type (required: 'interval' or 'specific_date')
+    - cadence_type (required: 'interval', 'interval_hours', or 'specific_date')
     - interval_days (required if cadence_type='interval')
+    - interval_hours (required if cadence_type='interval_hours')
     - due_date (required if cadence_type='specific_date', format: YYYY-MM-DD)
     - critical (optional, default: false)
     - is_active (optional, default: true)
@@ -336,17 +337,23 @@ def import_maintenance_tasks(
                 continue
             
             cadence_type_str = str(row['cadence_type']).strip().lower()
-            if cadence_type_str not in ('interval', 'specific_date'):
+            if cadence_type_str not in ('interval', 'interval_hours', 'specific_date'):
                 errors.append({
                     "row": idx + 2,
-                    "error": f"Invalid cadence_type: {cadence_type_str}. Must be 'interval' or 'specific_date'"
+                    "error": f"Invalid cadence_type: {cadence_type_str}. Must be 'interval', 'interval_hours', or 'specific_date'"
                 })
                 continue
             
-            cadence_type = MaintenanceCadenceType.INTERVAL if cadence_type_str == 'interval' else MaintenanceCadenceType.SPECIFIC_DATE
+            if cadence_type_str == 'interval':
+                cadence_type = MaintenanceCadenceType.INTERVAL
+            elif cadence_type_str == 'interval_hours':
+                cadence_type = MaintenanceCadenceType.INTERVAL_HOURS
+            else:
+                cadence_type = MaintenanceCadenceType.SPECIFIC_DATE
             
             # Validate cadence-specific fields
             interval_days = None
+            interval_hours = None
             due_date = None
             next_due_at = None
             
@@ -370,6 +377,25 @@ def import_maintenance_tasks(
                 # Set next_due_at based on interval
                 next_due_at = datetime.now(timezone.utc)
                 next_due_at = next_due_at + timedelta(days=interval_days)
+            elif cadence_type == MaintenanceCadenceType.INTERVAL_HOURS:
+                if 'interval_hours' not in df.columns or pd.isna(row.get('interval_hours')):
+                    errors.append({
+                        "row": idx + 2,
+                        "error": "interval_hours is required for interval_hours cadence"
+                    })
+                    continue
+                try:
+                    interval_hours = float(row['interval_hours'])
+                    if interval_hours <= 0:
+                        raise ValueError("Interval hours must be > 0")
+                except (ValueError, TypeError):
+                    errors.append({
+                        "row": idx + 2,
+                        "error": f"Invalid interval_hours: {row.get('interval_hours')}"
+                    })
+                    continue
+                # For interval_hours, next_due_at is computed dynamically based on vessel hours
+                # so we don't set it here
             else:  # SPECIFIC_DATE
                 if 'due_date' not in df.columns or pd.isna(row.get('due_date')):
                     errors.append({
@@ -403,12 +429,17 @@ def import_maintenance_tasks(
                 active_val = str(row['is_active']).strip().lower()
                 is_active = active_val not in ('false', '0', 'no', 'n', 'inactive')
             
+            interval_hours_decimal = None
+            if interval_hours is not None:
+                interval_hours_decimal = Decimal(str(interval_hours))
+            
             task = MaintenanceTask(
                 vessel_id=vessel.id,
                 name=name,
                 description=str(row.get('description', '')).strip() or None,
                 cadence_type=cadence_type,
                 interval_days=interval_days,
+                interval_hours=interval_hours_decimal,
                 due_date=due_date,
                 next_due_at=next_due_at,
                 critical=critical,

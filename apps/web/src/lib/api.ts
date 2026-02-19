@@ -185,7 +185,7 @@ export type InventoryCheckLinesBulkUpdate = {
   lines: InventoryCheckLineCreate[];
 };
 
-export type MaintenanceCadenceType = "interval" | "specific_date";
+export type MaintenanceCadenceType = "interval" | "interval_hours" | "specific_date";
 
 export type MaintenanceTask = {
   id: number;
@@ -227,6 +227,7 @@ export type MaintenanceTaskUpdate = {
   description?: string | null;
   cadence_type?: MaintenanceCadenceType;
   interval_days?: number | null;
+  interval_hours?: number | null;
   due_date?: string | null;
   next_due_at?: string | null;
   critical?: boolean;

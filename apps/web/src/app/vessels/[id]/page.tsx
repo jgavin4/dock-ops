@@ -2484,7 +2484,7 @@ function MaintenanceTab({ vesselId }: { vesselId: number }) {
                             </td>
                             <td className="p-2">{cadenceText}</td>
                             <td className="p-2">
-                              {task.interval_hours != null &&
+                              {task.cadence_type === "interval_hours" &&
                               task.hours_remaining != null ? (
                                 <span className={task.is_due_by_hours ? "text-destructive font-medium" : ""}>
                                   {task.hours_remaining <= 0
@@ -2701,8 +2701,9 @@ function MaintenanceTab({ vesselId }: { vesselId: number }) {
         exampleColumns={[
           "name (required)",
           "description (optional)",
-          "cadence_type (required: 'interval' or 'specific_date')",
+          "cadence_type (required: 'interval', 'interval_hours', or 'specific_date')",
           "interval_days (required if cadence_type='interval')",
+          "interval_hours (required if cadence_type='interval_hours')",
           "due_date (required if cadence_type='specific_date', format: YYYY-MM-DD)",
           "critical (optional, default: false)",
           "is_active (optional, default: true)",
@@ -2740,7 +2741,7 @@ function TaskModal({
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    cadence_type: "interval" as "interval" | "specific_date",
+    cadence_type: "interval" as "interval" | "interval_hours" | "specific_date",
     interval_days: 90,
     interval_hours: "" as string | number,
     due_date: "",
@@ -2806,7 +2807,9 @@ function TaskModal({
       interval_days:
         formData.cadence_type === "interval" ? formData.interval_days : null,
       interval_hours:
-        intervalHours != null && !Number.isNaN(intervalHours) ? intervalHours : null,
+        formData.cadence_type === "interval_hours"
+          ? (intervalHours != null && !Number.isNaN(intervalHours) ? intervalHours : null)
+          : null,
       due_date:
         formData.cadence_type === "specific_date"
           ? new Date(formData.due_date).toISOString()
@@ -2870,51 +2873,57 @@ function TaskModal({
               </Select>
             </div>
             {formData.cadence_type === "interval" ? (
-              <>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Interval Days *
-                  </label>
-                  <Input
-                    type="number"
-                    value={formData.interval_days}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        interval_days: parseInt(e.target.value) || 0,
-                      })
-                    }
-                    min="1"
-                    required
-                  />
-                  {errors.interval_days && (
-                    <p className="text-sm text-destructive mt-1">
-                      {errors.interval_days}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Interval (hours) – optional
-                  </label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={formData.interval_hours}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        interval_hours: e.target.value,
-                      })
-                    }
-                    placeholder="e.g. 500 (due every 500 engine hours)"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Task is also due when vessel reaches this many hours since last completion.
+              <div>
+                <label className="text-sm font-medium mb-2 block">
+                  Interval Days *
+                </label>
+                <Input
+                  type="number"
+                  value={formData.interval_days}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      interval_days: parseInt(e.target.value) || 0,
+                    })
+                  }
+                  min="1"
+                  required
+                />
+                {errors.interval_days && (
+                  <p className="text-sm text-destructive mt-1">
+                    {errors.interval_days}
                   </p>
-                </div>
-              </>
+                )}
+              </div>
+            ) : formData.cadence_type === "interval_hours" ? (
+              <div>
+                <label className="text-sm font-medium mb-2 block">
+                  Interval Hours *
+                </label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  value={formData.interval_hours}
+                  onChange={(e) => {
+                    setFormData({
+                      ...formData,
+                      interval_hours: e.target.value,
+                    });
+                    if (errors.interval_hours) setErrors({ ...errors, interval_hours: "" });
+                  }}
+                  placeholder="e.g. 500 (due every 500 engine hours)"
+                  required
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Task is due when vessel reaches this many hours since last completion.
+                </p>
+                {errors.interval_hours && (
+                  <p className="text-sm text-destructive mt-1">
+                    {errors.interval_hours}
+                  </p>
+                )}
+              </div>
             ) : (
               <div>
                 <label className="text-sm font-medium mb-2 block">
