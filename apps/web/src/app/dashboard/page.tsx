@@ -1,6 +1,6 @@
 "use client";
 
-import { useUser } from "@clerk/nextjs";
+import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useMemo } from "react";
@@ -222,7 +222,7 @@ function VesselCard({
 }
 
 export default function DashboardPage() {
-  const { isSignedIn, isLoaded } = useUser();
+  const { isLoaded, isSignedIn } = useAuth();
   const router = useRouter();
   const { orgId } = useOrg();
   const api = useApi();
@@ -280,7 +280,8 @@ export default function DashboardPage() {
     },
   });
 
-  if (!isLoaded || (isSignedIn && meLoading)) {
+  // Only block full page until Clerk is loaded; then show shell and let content fill in
+  if (!isLoaded) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card>
@@ -292,7 +293,21 @@ export default function DashboardPage() {
     );
   }
 
-  if (isSignedIn && meError) {
+  if (!isSignedIn) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-center text-muted-foreground">
+              Please sign in to view vessels
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (meError) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card>
@@ -309,37 +324,17 @@ export default function DashboardPage() {
     );
   }
 
-  if (isSignedIn && !me) {
+  // While me or orgId aren't ready, show shell with inline loading (page has "loaded")
+  if (meLoading || !me || (me && !orgId)) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-center">Loading user data...</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (isSignedIn && !orgId && me) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-center">Loading organization...</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (!isSignedIn) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
+      <div>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">Vessels</h1>
+        </div>
         <Card>
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground">
-              Please sign in to view vessels
+              {meLoading || !me ? "Loading user data..." : "Loading organization..."}
             </p>
           </CardContent>
         </Card>

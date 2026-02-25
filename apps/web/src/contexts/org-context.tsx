@@ -9,20 +9,18 @@ type OrgContextType = {
 
 const OrgContext = createContext<OrgContextType | undefined>(undefined);
 
-export function OrgProvider({ children }: { children: React.ReactNode }) {
-  const [orgId, setOrgIdState] = useState<number | null>(null);
-
-  // Load from localStorage on mount
-  useEffect(() => {
+function getInitialOrgId(): number | null {
+  if (typeof window === "undefined") return null;
+  try {
     const stored = localStorage.getItem("selectedOrgId");
-    if (stored) {
-      try {
-        setOrgIdState(parseInt(stored, 10));
-      } catch {
-        // Invalid stored value
-      }
-    }
-  }, []);
+    return stored ? parseInt(stored, 10) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function OrgProvider({ children }: { children: React.ReactNode }) {
+  const [orgId, setOrgIdState] = useState<number | null>(getInitialOrgId);
 
   const setOrgId = (id: number | null) => {
     setOrgIdState(id);

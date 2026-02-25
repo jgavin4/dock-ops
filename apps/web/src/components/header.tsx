@@ -22,7 +22,7 @@ export function Header() {
   const isPublicLanding = pathname === "/";
 
   const { data: me } = useQuery({
-    queryKey: ["me", isLoaded, isSignedIn],
+    queryKey: ["me"],
     queryFn: () => api.getMe(),
     enabled: isLoaded === true && isSignedIn === true,
   });

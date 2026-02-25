@@ -3209,10 +3209,24 @@ export default function VesselDetailPage() {
   const canFetchVessel = isLoaded === true && isSignedIn === true && vesselIdValid;
 
   const { data: vessel, isLoading, error } = useQuery({
-    queryKey: ["vessels", vesselId, isLoaded, isSignedIn],
+    queryKey: ["vessels", vesselId],
     queryFn: () => api.getVessel(vesselId),
     enabled: canFetchVessel,
   });
+
+  // Don't show vessel skeleton until we're actually fetching (auth ready)
+  if (!canFetchVessel) {
+    return (
+      <div className="space-y-6">
+        <div className="h-8 bg-muted rounded w-1/4 animate-pulse"></div>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-center text-muted-foreground">Loading...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
