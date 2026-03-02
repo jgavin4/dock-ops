@@ -41,9 +41,9 @@ class MaintenanceCadenceType(str, enum.Enum):
 
 
 class OrgRole(str, enum.Enum):
-    ADMIN = "ADMIN"
-    MANAGER = "MANAGER"
-    TECH = "TECH"
+    OWNER = "OWNER"
+    CAPTAIN = "CAPTAIN"
+    CREW = "CREW"
 
 
 class MembershipStatus(str, enum.Enum):
@@ -128,7 +128,7 @@ class OrgMembership(Base):
     org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     role: Mapped[OrgRole] = mapped_column(
-        Enum(OrgRole), nullable=False, default=OrgRole.TECH, server_default="TECH"
+        Enum(OrgRole), nullable=False, default=OrgRole.CREW, server_default="CREW"
     )
     status: Mapped[MembershipStatus] = mapped_column(
         Enum(MembershipStatus), nullable=False, default=MembershipStatus.ACTIVE, server_default="ACTIVE"

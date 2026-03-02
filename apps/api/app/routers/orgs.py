@@ -63,7 +63,7 @@ def create_org(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Organization:
-    """Create a new organization and add creator as ADMIN.
+    """Create a new organization and add creator as OWNER.
     
     Note: This endpoint directly creates the org. For approval workflow,
     use POST /api/orgs/requests instead.
@@ -79,7 +79,7 @@ def create_org(
                 .join(OrgMembership, Organization.id == OrgMembership.org_id)
                 .where(
                     OrgMembership.user_id == user.id,
-                    OrgMembership.role == OrgRole.ADMIN,
+                    OrgMembership.role == OrgRole.OWNER,
                     Organization.name == payload.name
                 )
             )
@@ -113,11 +113,11 @@ def create_org(
     db.add(org)
     db.flush()
     
-    # Create membership for creator as ADMIN
+    # Create membership for creator as OWNER
     membership = OrgMembership(
         org_id=org.id,
         user_id=user.id,
-        role=OrgRole.ADMIN,
+        role=OrgRole.OWNER,
         status=MembershipStatus.ACTIVE
     )
     db.add(membership)
@@ -192,9 +192,9 @@ def create_org_request(
 @router.get("/api/orgs/requests", response_model=list[OrganizationRequestOut])
 def list_org_requests(
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_role([OrgRole.ADMIN])),
+    auth: AuthContext = Depends(require_role([OrgRole.OWNER])),
 ) -> list[OrganizationRequest]:
-    """List all organization requests (ADMIN only)."""
+    """List all organization requests (OWNER only)."""
     requests = (
         db.execute(
             select(OrganizationRequest)
@@ -221,9 +221,9 @@ def review_org_request(
     payload: OrganizationRequestReview,
     request_id: int = Path(ge=1),
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_role([OrgRole.ADMIN])),
+    auth: AuthContext = Depends(require_role([OrgRole.OWNER])),
 ) -> OrganizationRequest:
-    """Approve or reject an organization request (ADMIN only)."""
+    """Approve or reject an organization request (OWNER only)."""
     request = (
         db.execute(
             select(OrganizationRequest).where(OrganizationRequest.id == request_id)
@@ -266,15 +266,15 @@ def review_org_request(
         )
         
         if existing_membership:
-            # Update existing membership to ACTIVE and ADMIN role
+            # Update existing membership to ACTIVE and OWNER role
             existing_membership.status = MembershipStatus.ACTIVE
-            existing_membership.role = OrgRole.ADMIN
+            existing_membership.role = OrgRole.OWNER
         else:
             # Create new membership
             membership = OrgMembership(
                 org_id=org.id,
                 user_id=request.requested_by_user_id,
-                role=OrgRole.ADMIN,
+                role=OrgRole.OWNER,
                 status=MembershipStatus.ACTIVE
             )
             db.add(membership)
@@ -369,9 +369,9 @@ def get_me(
 def list_members(
     org_id: int = Path(ge=1),
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_role([OrgRole.ADMIN])),
+    auth: AuthContext = Depends(require_role([OrgRole.OWNER])),
 ) -> list[OrgMembership]:
-    """List all members of an organization (ADMIN only)."""
+    """List all members of an organization (OWNER only)."""
     if auth.org_id != org_id:
         raise HTTPException(status_code=403, detail="Cannot access other organization")
     
@@ -413,9 +413,9 @@ def create_invite(
     payload: OrgInviteCreate,
     org_id: int = Path(ge=1),
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_role([OrgRole.ADMIN])),
+    auth: AuthContext = Depends(require_role([OrgRole.OWNER])),
 ) -> OrgInvite:
-    """Create an organization invite (ADMIN only)."""
+    """Create an organization invite (OWNER only)."""
     if auth.org_id != org_id:
         raise HTTPException(status_code=403, detail="Cannot access other organization")
     
@@ -557,9 +557,9 @@ def update_member_role(
     org_id: int = Path(ge=1),
     user_id: int = Path(ge=1),
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_role([OrgRole.ADMIN])),
+    auth: AuthContext = Depends(require_role([OrgRole.OWNER])),
 ) -> OrgMembership:
-    """Update a member's role (ADMIN only)."""
+    """Update a member's role (OWNER only)."""
     if auth.org_id != org_id:
         raise HTTPException(status_code=403, detail="Cannot access other organization")
     
@@ -591,9 +591,9 @@ def disable_member(
     org_id: int = Path(ge=1),
     user_id: int = Path(ge=1),
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_role([OrgRole.ADMIN])),
+    auth: AuthContext = Depends(require_role([OrgRole.OWNER])),
 ) -> OrgMembership:
-    """Disable a member (ADMIN only)."""
+    """Disable a member (OWNER only)."""
     if auth.org_id != org_id:
         raise HTTPException(status_code=403, detail="Cannot access other organization")
     
@@ -766,15 +766,15 @@ def review_org_request_super_admin(
         )
         
         if existing_membership:
-            # Update existing membership to ACTIVE and ADMIN role
+            # Update existing membership to ACTIVE and OWNER role
             existing_membership.status = MembershipStatus.ACTIVE
-            existing_membership.role = OrgRole.ADMIN
+            existing_membership.role = OrgRole.OWNER
         else:
             # Create new membership
             membership = OrgMembership(
                 org_id=org.id,
                 user_id=request.requested_by_user_id,
-                role=OrgRole.ADMIN,
+                role=OrgRole.OWNER,
                 status=MembershipStatus.ACTIVE
             )
             db.add(membership)
@@ -796,9 +796,9 @@ def review_org_request_super_admin(
 def get_org_billing(
     org_id: int = Path(ge=1),
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_role([OrgRole.ADMIN])),
+    auth: AuthContext = Depends(require_role([OrgRole.OWNER])),
 ) -> dict:
-    """Get billing information for an organization (ADMIN only, read-only)."""
+    """Get billing information for an organization (OWNER only, read-only)."""
     if auth.org_id != org_id:
         raise HTTPException(status_code=403, detail="Cannot access other organization")
     

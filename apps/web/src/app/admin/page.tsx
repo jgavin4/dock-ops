@@ -31,7 +31,7 @@ export default function AdminPage() {
   const queryClient = useQueryClient();
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"ADMIN" | "MANAGER" | "TECH">("TECH");
+  const [inviteRole, setInviteRole] = useState<"OWNER" | "CAPTAIN" | "CREW">("CREW");
 
   const { data: members, isLoading: membersLoading } = useQuery({
     queryKey: ["org-members", orgId, isLoaded, isSignedIn],
@@ -41,7 +41,7 @@ export default function AdminPage() {
 
 
   const createInviteMutation = useMutation({
-    mutationFn: (data: { email: string; role: "ADMIN" | "MANAGER" | "TECH" }) =>
+    mutationFn: (data: { email: string; role: "OWNER" | "CAPTAIN" | "CREW" }) =>
       api.createOrgInvite(orgId!, data),
     onSuccess: () => {
       toast.success("Invitation sent successfully");
@@ -60,7 +60,7 @@ export default function AdminPage() {
       role,
     }: {
       userId: number;
-      role: "ADMIN" | "MANAGER" | "TECH";
+      role: "OWNER" | "CAPTAIN" | "CREW";
     }) => api.updateMemberRole(orgId!, userId, { role }),
     onSuccess: () => {
       toast.success("Role updated successfully");
@@ -122,9 +122,16 @@ export default function AdminPage() {
     createInviteMutation.mutate({ email: inviteEmail.trim(), role: inviteRole });
   };
 
+  const formatRole = (role: string) => {
+    if (role === "OWNER") return "Owner";
+    if (role === "CAPTAIN") return "Captain";
+    if (role === "CREW") return "Crew";
+    return role;
+  };
+
   const getRoleBadgeVariant = (role: string) => {
-    if (role === "ADMIN") return "destructive";
-    if (role === "MANAGER") return "default";
+    if (role === "OWNER") return "destructive";
+    if (role === "CAPTAIN") return "default";
     return "secondary";
   };
 
@@ -215,7 +222,7 @@ export default function AdminPage() {
                       </td>
                       <td className="p-2">
                         <Badge variant={getRoleBadgeVariant(member.role)}>
-                          {member.role}
+                          {formatRole(member.role)}
                         </Badge>
                       </td>
                       <td className="p-2">
@@ -232,15 +239,15 @@ export default function AdminPage() {
                                 onChange={(e) =>
                                   updateRoleMutation.mutate({
                                     userId: member.user_id,
-                                    role: e.target.value as "ADMIN" | "MANAGER" | "TECH",
+                                    role: e.target.value as "OWNER" | "CAPTAIN" | "CREW",
                                   })
                                 }
                                 className="w-32"
                                 disabled={updateRoleMutation.isPending}
                               >
-                                <option value="ADMIN">ADMIN</option>
-                                <option value="MANAGER">MANAGER</option>
-                                <option value="TECH">TECH</option>
+                                <option value="OWNER">Owner</option>
+                                <option value="CAPTAIN">Captain</option>
+                                <option value="CREW">Crew</option>
                               </Select>
                               <Button
                                 variant="outline"
@@ -288,12 +295,12 @@ export default function AdminPage() {
                 <Select
                   value={inviteRole}
                   onChange={(e) =>
-                    setInviteRole(e.target.value as "ADMIN" | "MANAGER" | "TECH")
+                    setInviteRole(e.target.value as "OWNER" | "CAPTAIN" | "CREW")
                   }
                 >
-                  <option value="ADMIN">ADMIN</option>
-                  <option value="MANAGER">MANAGER</option>
-                  <option value="TECH">TECH</option>
+                  <option value="OWNER">Owner</option>
+                  <option value="CAPTAIN">Captain</option>
+                  <option value="CREW">Crew</option>
                 </Select>
               </div>
             </div>

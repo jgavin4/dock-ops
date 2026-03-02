@@ -373,7 +373,7 @@ export default function DashboardPage() {
   }
 
   const currentMembership = me?.memberships?.find((m) => m.org_id === orgId);
-  const isAdmin = currentMembership?.role === "ADMIN";
+  const isOwner = currentMembership?.role === "OWNER";
   const atVesselLimit = billing && typeof effectiveLimit === "number" && billing.vessel_usage.current >= effectiveLimit;
 
   return (
@@ -398,7 +398,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {atVesselLimit && isAdmin && (
+      {atVesselLimit && isOwner && (
         <Card className="mb-6 border-amber-200 bg-amber-50">
           <CardContent className="pt-6 flex flex-wrap items-center justify-between gap-4">
             <p className="text-sm text-amber-900">

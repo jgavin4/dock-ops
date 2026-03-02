@@ -35,6 +35,13 @@ export function Header() {
     return activeMemberships.find((m) => m.org_id === orgId);
   }, [activeMemberships, orgId]);
 
+  const formatRole = (role?: string) => {
+    if (role === "OWNER") return "Owner";
+    if (role === "CAPTAIN") return "Captain";
+    if (role === "CREW") return "Crew";
+    return role || "";
+  };
+
   // Auto-select first org if none selected, or validate/clear invalid orgId
   React.useEffect(() => {
     if (!isSignedIn || !me) return;
@@ -132,7 +139,7 @@ export function Header() {
                     >
                       {activeMemberships.map((m) => (
                         <option key={m.org_id} value={m.org_id.toString()}>
-                          {m.org_name} ({m.role})
+                          {m.org_name} ({formatRole(m.role)})
                         </option>
                       ))}
                     </Select>
@@ -154,7 +161,7 @@ export function Header() {
                       Super Admin
                     </Link>
                   )}
-                  {!isPublicLanding && currentOrg?.role === "ADMIN" && (
+                  {!isPublicLanding && currentOrg?.role === "OWNER" && (
                     <Link
                       href="/admin"
                       className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
@@ -225,7 +232,7 @@ export function Header() {
                   >
                     {activeMemberships.map((m) => (
                       <option key={m.org_id} value={m.org_id.toString()}>
-                        {m.org_name} ({m.role})
+                        {m.org_name} ({formatRole(m.role)})
                       </option>
                     ))}
                   </Select>
@@ -241,7 +248,7 @@ export function Header() {
               <Link href="/dashboard" className="text-base font-medium py-2 block" onClick={closeMobileMenu}>
                 Dashboard
               </Link>
-              {currentOrg?.role === "ADMIN" && (
+              {currentOrg?.role === "OWNER" && (
                 <Link href="/admin" className="text-base font-medium py-2 block" onClick={closeMobileMenu}>
                   Admin
                 </Link>

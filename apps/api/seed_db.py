@@ -60,11 +60,11 @@ def seed():
             membership = OrgMembership(
                 org_id=org.id,
                 user_id=user.id,
-                role=OrgRole.ADMIN,
+                role=OrgRole.OWNER,
                 status=MembershipStatus.ACTIVE
             )
             db.add(membership)
-            print(f"Created membership: user {user.id} -> org {org.id} (ADMIN)")
+            print(f"Created membership: user {user.id} -> org {org.id} (OWNER)")
         else:
             print(f"Membership already exists: user {user.id} -> org {org.id}")
 

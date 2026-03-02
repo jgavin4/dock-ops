@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from app.db import Base
 from app.deps import get_db, get_current_auth
 from app.main import app
-from app.models import Organization, OrgMembership, User
+from app.models import Organization, OrgMembership, User, OrgRole, MembershipStatus
 
 # Use a test database URL (can be overridden with TEST_DATABASE_URL env var)
 TEST_DATABASE_URL = os.getenv(
@@ -46,10 +46,21 @@ def test_org_and_user(db_session) -> tuple[Organization, User]:
     org = Organization(id=1, name="Test Organization")
     db_session.add(org)
     
-    user = User(id=1, email="test@example.com", name="Test User")
+    user = User(
+        id=1,
+        auth_provider="clerk",
+        auth_subject="test_user_123",
+        email="test@example.com",
+        name="Test User",
+    )
     db_session.add(user)
     
-    membership = OrgMembership(org_id=1, user_id=1, role="admin")
+    membership = OrgMembership(
+        org_id=1,
+        user_id=1,
+        role=OrgRole.OWNER,
+        status=MembershipStatus.ACTIVE,
+    )
     db_session.add(membership)
     
     db_session.commit()

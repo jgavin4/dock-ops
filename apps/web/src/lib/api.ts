@@ -685,7 +685,7 @@ export type OrgMembership = {
   id: number;
   org_id: number;
   user_id: number;
-  role: "ADMIN" | "MANAGER" | "TECH";
+  role: "OWNER" | "CAPTAIN" | "CREW";
   status: "ACTIVE" | "INVITED" | "DISABLED";
   created_at: string;
   updated_at: string;
@@ -696,7 +696,7 @@ export type OrgMembership = {
 export type OrgMembershipSummary = {
   org_id: number;
   org_name: string;
-  role: "ADMIN" | "MANAGER" | "TECH";
+  role: "OWNER" | "CAPTAIN" | "CREW";
   status: "ACTIVE" | "INVITED" | "DISABLED";
 };
 
@@ -716,14 +716,14 @@ export type Me = {
 
 export type OrgInviteCreate = {
   email: string;
-  role: "ADMIN" | "MANAGER" | "TECH";
+  role: "OWNER" | "CAPTAIN" | "CREW";
 };
 
 export type OrgInvite = {
   id: number;
   org_id: number;
   email: string;
-  role: "ADMIN" | "MANAGER" | "TECH";
+  role: "OWNER" | "CAPTAIN" | "CREW";
   invited_by_user_id: number;
   expires_at: string;
   accepted_at: string | null;
@@ -736,7 +736,7 @@ export type OrgInviteAccept = {
 };
 
 export type MemberRoleUpdate = {
-  role: "ADMIN" | "MANAGER" | "TECH";
+  role: "OWNER" | "CAPTAIN" | "CREW";
 };
 
 export type OrganizationRequest = {

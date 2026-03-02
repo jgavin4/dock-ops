@@ -85,7 +85,7 @@ export default function AdminBillingPage() {
   }, [searchParams]);
 
   const currentMembership = me?.memberships?.find((m) => m.org_id === orgId);
-  const isAdmin = currentMembership?.role === "ADMIN";
+  const isOwner = currentMembership?.role === "OWNER";
 
   if (!isLoaded) {
     return (
@@ -104,13 +104,13 @@ export default function AdminBillingPage() {
     return null;
   }
 
-  if (!isAdmin) {
+  if (!isOwner) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="w-full max-w-md">
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground">
-              Admin access required to manage billing
+              Owner access required to manage billing
             </p>
             <p className="text-center mt-4">
               <Link href="/admin" className="text-sm text-primary hover:underline">

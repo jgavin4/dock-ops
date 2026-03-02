@@ -51,9 +51,9 @@ class CheckoutSessionBody(BaseModel):
 def create_checkout_session(
     body: CheckoutSessionBody = Body(default=CheckoutSessionBody()),
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_role([OrgRole.ADMIN])),
+    auth: AuthContext = Depends(require_role([OrgRole.OWNER])),
 ) -> dict:
-    """Create Stripe Checkout Session for base subscription + optional vessel packs (ADMIN only)."""
+    """Create Stripe Checkout Session for base subscription + optional vessel packs (OWNER only)."""
     org = (
         db.execute(select(Organization).where(Organization.id == auth.org_id))
         .scalars()
@@ -100,9 +100,9 @@ class UpdateVesselPacksBody(BaseModel):
 def update_vessel_packs(
     body: UpdateVesselPacksBody = Body(...),
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_role([OrgRole.ADMIN])),
+    auth: AuthContext = Depends(require_role([OrgRole.OWNER])),
 ) -> dict:
-    """Update vessel pack quantity on existing subscription (ADMIN only)."""
+    """Update vessel pack quantity on existing subscription (OWNER only)."""
     org = (
         db.execute(select(Organization).where(Organization.id == auth.org_id))
         .scalars()
@@ -154,13 +154,13 @@ def update_vessel_packs(
 @router.post("/portal")
 def create_portal_session(
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_role([OrgRole.ADMIN])),
+    auth: AuthContext = Depends(require_role([OrgRole.OWNER])),
 ) -> dict:
-    """Create Stripe Billing Portal session (ADMIN only).
+    """Create Stripe Billing Portal session (OWNER only).
     
     Args:
         db: Database session
-        auth: Auth context (must be ADMIN)
+        auth: Auth context (must be OWNER)
         
     Returns:
         Portal session URL
@@ -198,9 +198,9 @@ def create_portal_session(
 @router.get("/status")
 def get_billing_status(
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_role([OrgRole.ADMIN])),
+    auth: AuthContext = Depends(require_role([OrgRole.OWNER])),
 ) -> dict:
-    """Get billing status for organization (ADMIN only).
+    """Get billing status for organization (OWNER only).
     Returns plan/status, vessel usage, addon_pack_quantity, effective vessel_limit, and override state.
     """
     org = (

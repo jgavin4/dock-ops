@@ -5,17 +5,17 @@ from app.deps import AuthContext
 
 def can_crud_vessels(auth: AuthContext) -> bool:
     """Check if user can create/update/delete vessels."""
-    return auth.role in [OrgRole.ADMIN, OrgRole.MANAGER]
+    return auth.role in [OrgRole.OWNER, OrgRole.CAPTAIN]
 
 
 def can_edit_inventory_requirements(auth: AuthContext) -> bool:
     """Check if user can edit inventory requirements."""
-    return auth.role in [OrgRole.ADMIN, OrgRole.MANAGER]
+    return auth.role in [OrgRole.OWNER, OrgRole.CAPTAIN]
 
 
 def can_edit_maintenance_tasks(auth: AuthContext) -> bool:
     """Check if user can edit maintenance tasks."""
-    return auth.role in [OrgRole.ADMIN, OrgRole.MANAGER]
+    return auth.role in [OrgRole.OWNER, OrgRole.CAPTAIN]
 
 
 def can_create_inventory_checks(auth: AuthContext) -> bool:
@@ -45,4 +45,4 @@ def can_create_comments(auth: AuthContext) -> bool:
 
 def can_log_trips(auth: AuthContext) -> bool:
     """Check if user can log or edit trips."""
-    return auth.role in [OrgRole.ADMIN, OrgRole.MANAGER]
+    return auth.role in [OrgRole.OWNER, OrgRole.CAPTAIN]
